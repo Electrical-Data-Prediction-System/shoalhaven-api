@@ -26,6 +26,21 @@ def pushMeters(
 
 
 @app.command()
+def allMeters():
+    """Get all meters in MongoDB"""
+    meters = db.meterFindAll({})
+
+    table = Table(title="All Meters")
+    table.add_column("Location")
+    table.add_column("Class")
+    table.add_column("Unit")
+
+    for row in meters:
+        table.add_row(row["location"], row["type"], row["unit"])
+    console.print(table)
+
+
+@app.command()
 def ping():
     """Pings MongoDB cloud instance"""
     db.testPing()
