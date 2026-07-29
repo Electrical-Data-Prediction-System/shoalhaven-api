@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-import db
+import shoalhaven_api.db as db
 
 app = FastAPI()
 
