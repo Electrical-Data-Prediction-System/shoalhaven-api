@@ -1,5 +1,6 @@
+from bson import Type
 import typer
-from typing import Annotated
+from typing import Annotated, Optional
 from rich.console import Console
 from rich.table import Table
 import shoalhaven_api.db as db
@@ -38,6 +39,41 @@ def allMeters():
     for row in meters:
         table.add_row(row["location"], row["type"], row["unit"])
     console.print(table)
+
+
+@app.command()
+def queryMeters(
+    type: Annotated[
+        Optional[str], typer.Option(help="Filter by meter type (e.g. 'Admin Centre')")
+    ] = None,
+    unit: Annotated[
+        Optional[str], typer.Option(help="Filter by unit/category (e.g. 'Council')")
+    ] = None,
+    location: Annotated[
+        Optional[str], typer.Option(help="Partial location search")
+    ] = None,
+):
+    query = {}
+    if type:
+        query["type"] = type
+    if unit:
+        query["unit"] = unit
+    if location:
+        query["location"] = {"$regex": location, "$options": "i"}
+    try:
+        query = dict(query)
+        meters = db.meterFindAll(query)
+
+        table = Table(title=f"Queried Meters [{query}]")
+        table.add_column("Location")
+        table.add_column("Class")
+        table.add_column("Unit")
+
+        for row in meters:
+            table.add_row(row["location"], row["type"], row["unit"])
+        console.print(table)
+    except TypeError:
+        console.out("Query is not in a dict format!")
 
 
 @app.command()
