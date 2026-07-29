@@ -16,7 +16,7 @@ db = client.get_database("hydrochart_testing" if testing else "hydrochart")
 meters = db.get_collection("meter")
 
 
-def testPing():
+def testPing() -> None:
     try:
         client.admin.command("ping")
         print("Pinged your deployment. You successfully connected to MongoDB!")
@@ -24,10 +24,10 @@ def testPing():
         print(e)
 
 
-def meterFindAll(query: dict):
-    for meter in meters.find(query, {"_id": 0}):
-        return meter
+def meterFindAll(query: dict) -> list[dict]:
+    results = meters.find(query, {"_id": 0})
+    return list(results)
 
 
-def meterUpsert(query: dict, data: dict):
+def meterUpsert(query: dict, data: dict) -> None:
     meters.replace_one(query, data, upsert=True)
