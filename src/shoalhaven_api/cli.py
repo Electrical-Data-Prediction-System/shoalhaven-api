@@ -1,4 +1,3 @@
-from bson import Type
 import typer
 from typing import Annotated, Optional
 from rich.console import Console
@@ -53,6 +52,7 @@ def queryMeters(
         Optional[str], typer.Option(help="Partial location search")
     ] = None,
 ):
+    """Queries MongoDB for Meters"""
     query = {}
     if type:
         query["type"] = type
