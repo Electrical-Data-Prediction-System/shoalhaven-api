@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
 import meter
+import db
 
 app = FastAPI()
 
@@ -11,9 +12,5 @@ async def root():
 
 @app.get("/getMeterObject/{meter_id}")
 def getMeterObject(meter_id: str):
-    meterObject = {}
-    try:
-        meterObject = meter.mappings[meter_id]
-        return {"meterObject": meterObject}
-    except KeyError:
-        raise HTTPException(status_code=404, detail="Meter ID not found!")
+    meterObject = db.meterFindAll({"_id": meter_id})
+    return {"meterObject": meterObject}
