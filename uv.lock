@@ -675,7 +675,7 @@ wheels = [
 [[package]]
 name = "shoalhaven-api"
 version = "0.1.2"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "annotated-doc" },
     { name = "annotated-types" },

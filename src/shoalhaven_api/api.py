@@ -1,5 +1,4 @@
-from fastapi import FastAPI, HTTPException
-import meter
+from fastapi import FastAPI
 import db
 
 app = FastAPI()

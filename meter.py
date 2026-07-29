@@ -1,8 +1,10 @@
 import csv
+import shoalhaven_api.db as db
+from rich.progress import track
 
 
 class Meter:
-    def __init__(self, _id, _location, _type, _unit) -> None:
+    def __init__(self, _id: str, _location, _type: str, _unit: str) -> None:
         self.id = _id
         self.location = _location
         self.type = _type
@@ -10,6 +12,14 @@ class Meter:
 
     def __str__(self) -> str:
         return f"{self.id}: @ {self.location}, {self.type} / {self.unit}"
+
+    def to_dict(self) -> dict:
+        return {
+            "_id": self.id,
+            "location": self.location,
+            "type": self.type,
+            "unit": self.unit,
+        }
 
 
 # Mappings for meter ID to meter object
@@ -25,7 +35,8 @@ def loadSites(file) -> dict[str, Meter]:
     return meterMap
 
 
-# Pull site details from csv, load into objects
-mappings = loadSites("flow-site-details.csv")
-# for meterID in mappings:
-#     print(mappings[meterID])
+# Update meters in db with local file, or create if id does not exist
+def pushSites(file):
+    mappings = loadSites(file)
+    for id in track(mappings, description=f"Pushing sites from '{file}'"):
+        db.meterUpsert({"_id": id}, mappings[id].to_dict())
