@@ -1,7 +1,10 @@
 import csv
 from datetime import datetime
+
+from rich import console
 import shoalhaven_api.db as db
 from rich.progress import track
+from rich.console import Console
 
 
 class Reading:
@@ -19,6 +22,8 @@ class Reading:
 
 # Mappings for meter ID to meter object
 def loadReadings(file) -> list[Reading]:
+    console = Console()
+
     readingsMap = []
 
     with open(file, "r", newline="") as csvfile:
@@ -58,13 +63,20 @@ def loadReadings(file) -> list[Reading]:
                 reading = Reading(meterId, float(kwh), time)
                 readingsMap.append(reading)
 
+    console.out(f"Loaded {len(readingsMap)} readings!")
     return readingsMap
 
 
 # Update readings in db with local file, or create if id does not exist
 def pushReadings(file):
     mappings = loadReadings(file)
+    if not mappings:
+        return
 
-    for reading in track(mappings, description=f"Pushing readings from '{file}'"):
-        # A reading is identified by both its meterId and timestamp, as 2 records cannot overlap at the same time or place
-        db.readingInsertMany([reading.to_dict()])
+    dicts = [r.to_dict() for r in mappings]
+    BATCH_SIZE = 50000
+    for i in track(
+        range(0, len(dicts), BATCH_SIZE),
+        description=f"Pushing readings from '{file}'",
+    ):
+        db.readingInsertMany(dicts[i : i + BATCH_SIZE])
