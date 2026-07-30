@@ -1,7 +1,10 @@
 import csv
 from datetime import datetime
+
+from rich import console
 import shoalhaven_api.db as db
 from rich.progress import track
+from rich.console import Console
 
 
 class Reading:
@@ -19,6 +22,8 @@ class Reading:
 
 # Mappings for meter ID to meter object
 def loadReadings(file) -> list[Reading]:
+    console = Console()
+
     readingsMap = []
 
     with open(file, "r", newline="") as csvfile:
@@ -58,6 +63,7 @@ def loadReadings(file) -> list[Reading]:
                 reading = Reading(meterId, float(kwh), time)
                 readingsMap.append(reading)
 
+    console.out(f"Loaded {len(readingsMap)} readings!")
     return readingsMap
 
 
