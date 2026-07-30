@@ -70,7 +70,13 @@ def loadReadings(file) -> list[Reading]:
 # Update readings in db with local file, or create if id does not exist
 def pushReadings(file):
     mappings = loadReadings(file)
+    if not mappings:
+        return
 
-    for reading in track(mappings, description=f"Pushing readings from '{file}'"):
-        # A reading is identified by both its meterId and timestamp, as 2 records cannot overlap at the same time or place
-        db.readingInsertMany([reading.to_dict()])
+    dicts = [r.to_dict() for r in mappings]
+    BATCH_SIZE = 50000
+    for i in track(
+        range(0, len(dicts), BATCH_SIZE),
+        description=f"Pushing readings from '{file}'",
+    ):
+        db.readingInsertMany(dicts[i : i + BATCH_SIZE])
