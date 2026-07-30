@@ -4,6 +4,7 @@ from rich.console import Console
 from rich.table import Table
 import shoalhaven_api.db as db
 import shoalhaven_api.meter as meter
+import shoalhaven_api.reading as reading
 
 # Init Typer and Rich console output
 app = typer.Typer(
@@ -74,6 +75,19 @@ def queryMeters(
         console.print(table)
     except TypeError:
         console.out("Query is not in a dict format!")
+
+
+@app.command()
+def pushReadings(
+    file: Annotated[
+        str, typer.Argument(help="Path to the CSV file containing readings data")
+    ] = "readings.csv",
+):
+    """Pushes and updates all readings from CSV to MongoDB
+
+    Reads the CSV, creates Reader objects, and upserts each one into
+    the MongoDB collection."""
+    reading.pushReadings(file)
 
 
 @app.command()
