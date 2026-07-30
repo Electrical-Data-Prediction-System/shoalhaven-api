@@ -12,8 +12,9 @@ uri = getenv("MONGODB_CONNECTION_STRING")
 client = MongoClient(uri, server_api=ServerApi("1"))
 
 # DB instance setup, fall to testing if needed.
-db = client.get_database("hydrochart_testing" if testing else "hydrochart")
+db = client.get_database("hydrochart_test" if testing else "hydrochart")
 meters = db.get_collection("meter")
+readings = db.get_collection("reading")
 
 
 def testPing() -> None:
@@ -31,3 +32,7 @@ def meterFindAll(query: dict) -> list[dict]:
 
 def meterUpsert(query: dict, data: dict) -> None:
     meters.replace_one(query, data, upsert=True)
+
+
+def readingInsertMany(data: list[dict]) -> None:
+    readings.insert_many(data, ordered=False)
