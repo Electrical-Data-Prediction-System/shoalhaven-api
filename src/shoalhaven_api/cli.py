@@ -60,7 +60,7 @@ def queryMeters(
     if unit:
         query["unit"] = unit
     if location:
-        query["location"] = {"$regex": location, "$options": "i"}
+        query["location.fullAddress"] = {"$regex": location, "$options": "i"}
     try:
         query = dict(query)
         meters = db.meterFindAll(query)
