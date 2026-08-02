@@ -17,7 +17,7 @@ console = Console()
 def pushMeters(
     file: Annotated[
         str, typer.Argument(help="Path to the CSV file containing meter site data")
-    ] = "flow-site-details.csv",
+    ] = "./csv/meters.csv",
 ):
     """Pushes and updates all meters from CSV to MongoDB
 
@@ -37,7 +37,7 @@ def allMeters():
     table.add_column("Unit")
 
     for row in meters:
-        table.add_row(row["location"], row["type"], row["unit"])
+        table.add_row(row["location"]["fullAddress"], row["type"], row["unit"])
     console.print(table)
 
 
@@ -71,7 +71,7 @@ def queryMeters(
         table.add_column("Unit")
 
         for row in meters:
-            table.add_row(row["location"], row["type"], row["unit"])
+            table.add_row(row["location"]["fullAddress"], row["type"], row["unit"])
         console.print(table)
     except TypeError:
         console.out("Query is not in a dict format!")
@@ -81,7 +81,7 @@ def queryMeters(
 def pushReadings(
     file: Annotated[
         str, typer.Argument(help="Path to the CSV file containing readings data")
-    ] = "readings.csv",
+    ] = "./csv/readings.csv",
 ):
     """Pushes and updates all readings from CSV to MongoDB
 
