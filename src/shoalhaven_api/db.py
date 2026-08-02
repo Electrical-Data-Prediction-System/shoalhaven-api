@@ -4,7 +4,7 @@ from os import getenv
 from dotenv import load_dotenv
 
 load_dotenv()
-testing = True
+testing = not bool(getenv("PRODUCTION"))
 
 
 # MongoDB client setup
@@ -26,7 +26,7 @@ def testPing() -> None:
 
 
 def meterFindAll(query: dict) -> list[dict]:
-    results = meters.find(query, {"_id": 0})
+    results = meters.find(query)
     return list(results)
 
 
