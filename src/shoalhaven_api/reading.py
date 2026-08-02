@@ -18,7 +18,6 @@ class Reading:
 
     def to_dict(self) -> dict:
         return {
-            "_id": f"{self.meterId}|{self.timestamp.isoformat()}",
             "_meterId": self.meterId,
             "kwh": self.kwh,
             "timestamp": self.timestamp,
@@ -73,40 +72,39 @@ def loadReadings(file) -> list[Reading]:
 
 
 # A quicker way to parse CSV files via pandas
-def loadReadingsDataframe(file) -> list[dict]:
+def loadReadingsDataframe(file, granularity_minutes) -> list[dict]:
     df = pd.read_csv(file)
 
-    # Parse the Date column once, vectorised
     df["Date"] = pd.to_datetime(df["Date"], format="%d/%m/%Y %H:%M")
 
-    # Wide into long, one row per (Date, meterColumn)
+    idx = pd.DatetimeIndex(df["Date"])
+    df = df[(idx.hour * 60 + idx.minute) % granularity_minutes == 0]
+
     long = df.melt(id_vars=["Date"], var_name="header", value_name="kwh")
-
-    #'NEEE002335_kWh_Import to Site' into 'NEEE002335'
     long["_meterId"] = long["header"].str.split("_").str[0]
-
-    # Empty cells arrive as NaN to default to 0.0
     long["kwh"] = long["kwh"].fillna(0.0)
 
-    # Composite _id
-    long["timestamp"] = long["Date"].dt.to_pydatetime()
-    long["_id"] = long["_meterId"] + "|" + long["Date"].dt.strftime("%Y-%m-%dT%H:%M:%S")
+    # python datetimes for Mongo, via a typed DatetimeIndex (no .dt)
+    long["timestamp"] = pd.DatetimeIndex(long["Date"]).to_pydatetime().tolist()
 
-    return long[["_id", "_meterId", "kwh", "timestamp"]].to_dict(orient="records")
+    return long[["_meterId", "kwh", "timestamp"]].to_dict(orient="records")
 
 
 # Drops reading table in db and recreates it
-def pushReadings(file):
+def pushReadings(file, granularity_minutes):
     console = Console()
     # Check for file before doing anything
     console.out(f"Loading readings from {file}...")
-    records = loadReadingsDataframe(file)
+    records = loadReadingsDataframe(file, granularity_minutes)
     if not records:
         return
 
     # Once we have a file, we can safely drop the readings table, backup CSV exists also
     console.out(f"Loaded {len(records)} readings, dropping readings table")
     db.readings.drop()
+
+    console.out("Creating meterId to timestamp index table...")
+    db.readings.create_index([("_meterId", 1), ("timestamp", 1)])
 
     # Then populate the db with the CSV data
     BATCH_SIZE = 50000
