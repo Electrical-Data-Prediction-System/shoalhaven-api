@@ -95,7 +95,7 @@ def loadReadingsDataframe(file) -> list[dict]:
     return long[["_id", "_meterId", "kwh", "timestamp"]].to_dict(orient="records")
 
 
-# Update readings in db with local file, or create if id does not exist
+# Drops reading table in db and recreates it
 def pushReadings(file):
     console = Console()
     # Check for file before doing anything
