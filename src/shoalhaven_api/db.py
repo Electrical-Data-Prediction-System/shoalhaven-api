@@ -1,3 +1,4 @@
+import datetime
 from pymongo import MongoClient
 from pymongo.server_api import ServerApi
 from os import getenv
@@ -33,6 +34,24 @@ def meterFindAll(query: dict) -> list[dict]:
 
 def meterUpsert(query: dict, data: dict) -> None:
     meters.replace_one(query, data, upsert=True)
+
+
+def readingsGetBetween(
+    startDate: datetime.date,
+    endDate: datetime.date = datetime.datetime.now(),
+    meter_id: str | None = None,
+) -> list[dict]:
+    query = {}
+
+    query["timestamp"] = {"$gte": startDate, "$lte": endDate}
+    if meter_id:
+        query["_meterId"] = meter_id
+
+    print(query)
+
+    results = readings.find(query, {"_id": 0})
+
+    return list(results)
 
 
 def readingInsertMany(data: list[dict]) -> tuple[int, int]:

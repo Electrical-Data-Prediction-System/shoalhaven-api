@@ -1,7 +1,7 @@
+from datetime import datetime
 from fastapi import FastAPI, HTTPException
 import shoalhaven_api.db as db
 from shoalhaven_api.geocoding import geocodeLocationString
-from shoalhaven_api.location import Location
 
 app = FastAPI()
 
@@ -22,7 +22,24 @@ def getMeterObject(meter_id: str) -> dict:
 
 
 @app.get("/formatLocation/{query}")
-def formatLocation(query: str) -> Location:
+def formatLocation(query: str) -> dict:
     location = geocodeLocationString(query)
 
-    return location
+    return location.to_dict()
+
+
+# Dates are formated in ISO: 2026-08-03 05:34:37.967019
+@app.get("/getReadingsBetween/")
+def getReadingsBetween(
+    start: datetime, end: datetime | None = None, meter_id: str | None = None
+) -> list[dict]:
+    if not end:
+        end = datetime.now()
+    if end <= start:
+        raise HTTPException(
+            status_code=400, detail="Start date cannot be ahead of end date"
+        )
+
+    results = db.readingsGetBetween(start, end, meter_id)
+
+    return list(results)

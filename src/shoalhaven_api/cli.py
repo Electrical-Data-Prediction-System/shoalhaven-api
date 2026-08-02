@@ -82,12 +82,18 @@ def pushReadings(
     file: Annotated[
         str, typer.Argument(help="Path to the CSV file containing readings data")
     ] = "./csv/readings.csv",
+    granularity_minutes: Annotated[
+        int,
+        typer.Argument(
+            help="Granularity of minutes to push. 60: hourly, 240: 4-hourly, 1440: daily"
+        ),
+    ] = 60,
 ):
     """Pushes and updates all readings from CSV to MongoDB
 
     Reads the CSV, creates Reader objects, and upserts each one into
     the MongoDB collection."""
-    reading.pushReadings(file)
+    reading.pushReadings(file, granularity_minutes)
 
 
 @app.command()
