@@ -17,7 +17,7 @@ console = Console()
 def pushMeters(
     file: Annotated[
         str, typer.Argument(help="Path to the CSV file containing meter site data")
-    ] = "flow-site-details.csv",
+    ] = "./csv/meters.csv",
 ):
     """Pushes and updates all meters from CSV to MongoDB
 
@@ -37,7 +37,7 @@ def allMeters():
     table.add_column("Unit")
 
     for row in meters:
-        table.add_row(row["location"], row["type"], row["unit"])
+        table.add_row(row["location"]["fullAddress"], row["type"], row["unit"])
     console.print(table)
 
 
@@ -60,7 +60,7 @@ def queryMeters(
     if unit:
         query["unit"] = unit
     if location:
-        query["location"] = {"$regex": location, "$options": "i"}
+        query["location.fullAddress"] = {"$regex": location, "$options": "i"}
     try:
         query = dict(query)
         meters = db.meterFindAll(query)
@@ -71,7 +71,7 @@ def queryMeters(
         table.add_column("Unit")
 
         for row in meters:
-            table.add_row(row["location"], row["type"], row["unit"])
+            table.add_row(row["location"]["fullAddress"], row["type"], row["unit"])
         console.print(table)
     except TypeError:
         console.out("Query is not in a dict format!")
@@ -81,13 +81,19 @@ def queryMeters(
 def pushReadings(
     file: Annotated[
         str, typer.Argument(help="Path to the CSV file containing readings data")
-    ] = "readings.csv",
+    ] = "./csv/readings.csv",
+    granularity_minutes: Annotated[
+        int,
+        typer.Argument(
+            help="Granularity of minutes to push. 60: hourly, 240: 4-hourly, 1440: daily"
+        ),
+    ] = 60,
 ):
     """Pushes and updates all readings from CSV to MongoDB
 
     Reads the CSV, creates Reader objects, and upserts each one into
     the MongoDB collection."""
-    reading.pushReadings(file)
+    reading.pushReadings(file, granularity_minutes)
 
 
 @app.command()

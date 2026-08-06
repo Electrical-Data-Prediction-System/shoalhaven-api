@@ -1,10 +1,11 @@
 import csv
-import shoalhaven_api.db as db
+from shoalhaven_api.location import Location
+from shoalhaven_api.geocoding import geocodeLocationString
 from rich.progress import track
 
 
 class Meter:
-    def __init__(self, _id: str, _location, _type: str, _unit: str) -> None:
+    def __init__(self, _id: str, _location: Location, _type: str, _unit: str) -> None:
         self.id = _id
         self.location = _location
         self.type = _type
@@ -16,7 +17,7 @@ class Meter:
     def to_dict(self) -> dict:
         return {
             "_id": self.id,
-            "location": self.location,
+            "location": self.location.to_dict(),
             "type": self.type,
             "unit": self.unit,
         }
@@ -29,7 +30,10 @@ def loadSites(file) -> dict[str, Meter]:
     with open(file, "r", newline="") as csvfile:
         csvreader = csv.reader(csvfile, delimiter=",")
         for row in csvreader:
-            rowObject = Meter(row[0], row[1], row[2], row[3])
+            # Format location
+            location = geocodeLocationString(row[1])
+
+            rowObject = Meter(row[0], location, row[2], row[3])
             meterMap[row[0]] = rowObject
 
     return meterMap
@@ -37,6 +41,8 @@ def loadSites(file) -> dict[str, Meter]:
 
 # Update meters in db with local file, or create if id does not exist
 def pushSites(file):
+    import shoalhaven_api.db as db
+
     mappings = loadSites(file)
     for id in track(mappings, description=f"Pushing sites from '{file}'"):
         db.meterUpsert({"_id": id}, mappings[id].to_dict())
