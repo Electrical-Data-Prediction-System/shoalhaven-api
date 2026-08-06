@@ -1,5 +1,4 @@
 import csv
-import shoalhaven_api.db as db
 from shoalhaven_api.location import Location
 from shoalhaven_api.geocoding import geocodeLocationString
 from rich.progress import track
@@ -42,6 +41,8 @@ def loadSites(file) -> dict[str, Meter]:
 
 # Update meters in db with local file, or create if id does not exist
 def pushSites(file):
+    import shoalhaven_api.db as db
+
     mappings = loadSites(file)
     for id in track(mappings, description=f"Pushing sites from '{file}'"):
         db.meterUpsert({"_id": id}, mappings[id].to_dict())
