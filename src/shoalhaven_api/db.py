@@ -32,6 +32,10 @@ def formatISOAsMonth(iso: str) -> str:
 
     return month
 
+def meterFindOne(query: dict) -> dict | None:
+    result = meters.find_one(query)
+    return result
+
 
 def meterFindAll(query: dict) -> list[dict]:
     results = meters.find(query)

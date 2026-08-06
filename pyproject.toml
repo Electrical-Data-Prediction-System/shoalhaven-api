@@ -8,6 +8,7 @@ dependencies = [
   "anyio==4.13.0",
   "certifi==2026.5.20",
   "click==8.4.1",
+  "console>=0.9912",
   "detect-installer==0.1.0",
   "dnspython==2.8.0",
   "email-validator==2.3.0",
@@ -46,9 +47,9 @@ dependencies = [
   "typing-inspection==0.4.2",
   "urllib3==2.7.0",
   "uvicorn==0.48.0",
-  "uvloop==0.22.1",
   "watchfiles==1.2.0",
   "websockets==16.0",
+  "winloop>=0.6.3",
 ]
 
 [tool.hatch.build.targets.wheel]

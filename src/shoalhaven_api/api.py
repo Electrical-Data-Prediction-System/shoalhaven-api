@@ -11,9 +11,9 @@ async def root():
     return {"message": "Hello World"}
 
 
-@app.get("/getMeterObject/{meter_id}")
-def getMeterObject(meter_id: str) -> dict:
-    meterObject = db.meterFindAll({"_id": meter_id})
+@app.get("/meters/{meter_id}")
+def get_meter(meter_id: str) -> dict:
+    meterObject = db.meterFindOne({"_id": meter_id})
 
     if meterObject:
         return {"meterObject": meterObject}
@@ -21,7 +21,7 @@ def getMeterObject(meter_id: str) -> dict:
         raise HTTPException(status_code=404, detail="No meters found")
 
 
-@app.get("/aggregateMeterPowerBetween/{meter_id}")
+@app.get("/meters/{meter_id}/aggregate-power")
 def getAggregatedMeterPower(
     meter_id: str, start: datetime | None = None, end: datetime | None = None
 ) -> list[dict]:
@@ -30,7 +30,7 @@ def getAggregatedMeterPower(
     return results
 
 
-@app.get("/aggregateAllMeterPowerBetween/")
+@app.get("/meters/power/aggregate-power")
 def getAllAggregatedMeterPower(
     start: datetime | None = None, end: datetime | None = None
 ) -> list[dict]:
@@ -39,7 +39,7 @@ def getAllAggregatedMeterPower(
     return results
 
 
-@app.get("/formatLocation/{query}")
+@app.get("/locations/geocode/{query}")
 def formatLocation(query: str) -> dict:
     location = geocodeLocationString(query)
 
@@ -47,9 +47,9 @@ def formatLocation(query: str) -> dict:
 
 
 # Dates are formated in ISO: 2026-08-03 05:34:37.967019
-@app.get("/getReadingsBetween/")
+@app.get("/meters/{meter_id}/readings")
 def getReadingsBetween(
-    start: datetime, end: datetime | None = None, meter_id: str | None = None
+    meter_id: str, start: datetime, end: datetime | None = None,
 ) -> list[dict]:
     if not end:
         end = datetime.now()
@@ -64,13 +64,12 @@ def getReadingsBetween(
 
 
 # Dates are formated in ISO: 2026-08-03 05:34:37.967019
-@app.get("/aggregateReadingsBetween/")
+@app.get("/readings/aggregate")
 def sumReadingsBetween(
     start: datetime | None = None, end: datetime | None = None
 ) -> list[dict]:
     if not end:
         end = datetime.now()
-
     if start is None:
         start = end - timedelta(days=365)
 

@@ -30,12 +30,12 @@ Dates are formatted in ISO, e.g. `2026-08-03 05:34:37.967019`.
 | Route | Description |
 | --- | --- |
 | `GET /` | Health check |
-| `GET /getMeterObject/{meter_id}` | Returns a single meter object by ID |
-| `GET /aggregateMeterPowerBetween/{meter_id}?start=&end=` | Sums KWH per meter between dates |
-| `GET /aggregateAllMeterPowerBetween/?start=&end=` | Sums KWH for all meters between dates |
-| `GET /formatLocation/{query}` | Geocodes a location string into structured data |
-| `GET /getReadingsBetween/?start=&end=&meter_id=` | Raw readings between two dates, optionally filtered by meter |
-| `GET /aggregateReadingsBetween/?start=&end=` | Monthly KWH aggregates between two dates |
+| `GET /meters/{meter_id}` | Returns a single meter object by ID |
+| `GET /meters/{meter_id}/aggregate-power?start=&end=` | Sums KWH per meter between dates |
+| `GET /meters/{meter_id}/aggregate-power?start=&end=` | Sums KWH for all meters between dates |
+| `GET /locations/geocode/{query}` | Geocodes a location string into structured data |
+| `GET /meters/{meter_id}/readings?start=&end=` | Raw readings between two dates, optionally filtered by meter |
+| `GET /readings/aggregate/?start=&end=` | Monthly KWH aggregates between two dates |
 
 ## Data Model
 - **Meter**: `_id`, `location`, `type`, `unit`
