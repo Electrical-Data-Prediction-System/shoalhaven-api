@@ -21,20 +21,20 @@ def get_meter(meter_id: str) -> dict:
         raise HTTPException(status_code=404, detail="No meters found")
 
 
-@app.get("/meters/{meter_id}/aggregate-power")
-def getAggregatedMeterPower(
-    meter_id: str, start: datetime | None = None, end: datetime | None = None
-) -> list[dict]:
-    results = db.aggregateMeterPowerBetween(meter_id, start, end)
-
-    return results
-
-
 @app.get("/meters/power/aggregate-power")
 def getAllAggregatedMeterPower(
     start: datetime | None = None, end: datetime | None = None
 ) -> list[dict]:
     results = db.aggregateAllMeterPowerBetween(start, end)
+
+    return results
+
+
+@app.get("/meters/{meter_id}/aggregate-power")
+def getAggregatedMeterPower(
+    meter_id: str, start: datetime | None = None, end: datetime | None = None
+) -> list[dict]:
+    results = db.aggregateMeterPowerBetween(meter_id, start, end)
 
     return results
 

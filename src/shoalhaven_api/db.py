@@ -6,6 +6,11 @@ from dotenv import load_dotenv
 from pymongo.errors import BulkWriteError
 from shoalhaven_api.meter import Meter
 
+import logging
+
+logger = logging.getLogger('uvicorn.error')
+logger.setLevel(logging.DEBUG)
+
 load_dotenv()
 
 
@@ -187,6 +192,8 @@ def aggregateAllMeterPowerBetween(
         else datetime.datetime.combine(endDate, datetime.time.max)
     )
 
+    logger.debug(str(startDate) + " : " + str(endDate))
+
     query["timestamp"] = {"$gte": start, "$lte": end}
 
     results = readings.aggregate(
@@ -198,8 +205,6 @@ def aggregateAllMeterPowerBetween(
                     "_id": 0,
                     "name": "$_id",
                     "KWH": 1,
-                    "KPI": "4,554",
-                    "bounceRate": "45%",
                 }
             },
         ]
