@@ -49,7 +49,9 @@ def formatLocation(query: str) -> dict:
 # Dates are formated in ISO: 2026-08-03 05:34:37.967019
 @app.get("/meters/{meter_id}/readings")
 def getReadingsBetween(
-    meter_id: str, start: datetime, end: datetime | None = None,
+    meter_id: str,
+    start: datetime,
+    end: datetime | None = None,
 ) -> list[dict]:
     if not end:
         end = datetime.now()
