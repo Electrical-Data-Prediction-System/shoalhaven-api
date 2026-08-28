@@ -1,9 +1,16 @@
 from datetime import datetime, timedelta
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 import shoalhaven_api.db as db
 from shoalhaven_api.geocoding import geocodeLocationString
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_methods=["GET"],
+)
 
 
 @app.get("/")
