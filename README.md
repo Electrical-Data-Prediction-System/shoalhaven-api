@@ -7,9 +7,13 @@ A `fastapi` implementation that parses CSV data, making it query-able and perfor
 - **Geocoding**: MapBox Geocoding API to enrich meter locations
 - **CLI**: `typer` + `rich`
 
+## Prerequisites
+- `uv` installed.
+- Python >=3.13 installed.
+
 ## Setup
 1. Install dependencies and sync the environment: `uv sync`
-2. Copy `.env` configuration with your `MONGODB_CONNECTION_STRING` and `MAPBOX_API` keys
+2. Copy `.env` configuration with your `MONGODB_CONNECTION_STRING` and `MAPBOX_API` keys, see `.env.example`
 3. Use `shoalhaven --help` to get started!
 
 ## Using the CLI
@@ -17,25 +21,29 @@ A `fastapi` implementation that parses CSV data, making it query-able and perfor
 
 | Command | Description |
 | --- | --- |
-| `shoalhaven pushMeters [file]` | Upserts all meters from CSV (default `./csv/meters.csv`) into MongoDB |
+| `shoalhaven pushMeters [file=./csv/meters.csv] [granularity=60]` | Upserts all meters from CSV (default `./csv/meters.csv`) into MongoDB, granularity filters only uploads rows whose `hour * 60 + minute` is divisible by it |
 | `shoalhaven allMeters` | Lists every meter in MongoDB |
 | `shoalhaven queryMeters` | Filters meters by `--type`, `--unit`, or a partial `--location` search |
 | `shoalhaven pushReadings [file] [granularity]` | Drops and repopulates readings from CSV. `granularity` in minutes: `60` hourly, `240` 4-hourly, `1440` daily (default `60`) |
 | `shoalhaven ping` | Tests connectivity to the MongoDB instance |
-| `shoalhaven serve` | Starts the FastAPI dev server |
+| `shoalhaven serve [host=0.0.0.0] [port=8000]` | Starts the FastAPI dev server |
+
+### Warning
+`pushReadings` is currently destructive, it drops the collection before adding from the specified CSV.
 
 ## API Routes
-Dates are formatted in ISO, e.g. `2026-08-03 05:34:37.967019`.
+Dates are formatted in ISO when querying, e.g. `2026-08-03 05:35:00`.
 
 | Route | Description |
 | --- | --- |
 | `GET /` | Health check |
 | `GET /meters/{meter_id}` | Returns a single meter object by ID |
 | `GET /meters/{meter_id}/aggregate-power?start=&end=` | Sums KWH per meter between dates |
-| `GET /meters/{meter_id}/aggregate-power?start=&end=` | Sums KWH for all meters between dates |
+| `GET /meters/power/aggregate-power?start=&end=` | Sums KWH for all meters between dates |
 | `GET /locations/geocode/{query}` | Geocodes a location string into structured data |
 | `GET /meters/{meter_id}/readings?start=&end=` | Raw readings between two dates, optionally filtered by meter |
-| `GET /readings/aggregate/?start=&end=` | Monthly KWH aggregates between two dates |
+| `GET /readings/aggregate?start=&end=` | Monthly KWH aggregates between two dates |
+
 
 ## Data Model
 - **Meter**: `_id`, `location`, `type`, `unit`
@@ -51,6 +59,5 @@ src/shoalhaven_api/
 ├── meter.py      # Meter model + CSV ingestion
 ├── reading.py    # Reading model + fast pandas CSV ingestion
 ├── location.py   # Location model
-├── geocoding.py  # MapBox geocoding integration
-└── dashboard.py  # Graph formatting helpers
+└── geocoding.py  # MapBox geocoding integration
 ```
