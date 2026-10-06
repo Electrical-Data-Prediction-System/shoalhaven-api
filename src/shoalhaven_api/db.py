@@ -8,7 +8,7 @@ from shoalhaven_api.meter import Meter
 
 import logging
 
-logger = logging.getLogger('uvicorn.error')
+logger = logging.getLogger("uvicorn.error")
 logger.setLevel(logging.DEBUG)
 
 load_dotenv()
@@ -36,6 +36,7 @@ def formatISOAsMonth(iso: str) -> str:
     month = dt.strftime("%B")
 
     return month
+
 
 def meterFindOne(query: dict) -> dict | None:
     result = meters.find_one(query)
@@ -159,8 +160,6 @@ def aggregateMeterPowerBetween(
                 "_id": 0,
                 "name": "$_id",
                 "KWH": 1,
-                "KPI": "4,554",
-                "bounceRate": "45%",
             }
         },
     ]
