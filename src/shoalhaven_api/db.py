@@ -66,10 +66,13 @@ def meterUpsert(query: dict, data: dict) -> None:
 
 
 def aggregateReadingsBetween(
-    startDate: datetime.date | None = None,
-    endDate: datetime.date = datetime.datetime.now(),
+    startDate: datetime.datetime | datetime.date | None = None,
+    endDate: datetime.datetime | datetime.date | None = None,
 ) -> list[dict]:
     query = {}
+
+    if endDate is None:
+        endDate = datetime.datetime.now()
 
     if startDate is None:
         startDate = endDate - datetime.timedelta(days=365)
@@ -109,10 +112,13 @@ def aggregateReadingsBetween(
 
 def readingsGetBetween(
     startDate: datetime.date,
-    endDate: datetime.date = datetime.datetime.now(),
+    endDate: datetime.datetime | datetime.date | None = None,
     meter_id: str | None = None,
 ) -> list[dict]:
     query = {}
+
+    if endDate is None:
+        endDate = datetime.datetime.now()
 
     query["timestamp"] = {"$gte": startDate, "$lte": endDate}
     if meter_id:
