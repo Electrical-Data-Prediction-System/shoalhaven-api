@@ -8,8 +8,11 @@ load_dotenv()
 
 def geocodeLocationString(query: str) -> Location:
     # Fetch with MapBox API
-    api = f"https://api.mapbox.com/search/geocode/v6/forward?q={query}&country=au&access_token={getenv('MAPBOX_API')}"
-    response = requests.get(api, timeout=10)
+    response = requests.get(
+        "https://api.mapbox.com/search/geocode/v6/forward?",
+        params={"q": query, "country": "au", "access_token": getenv("MAPBOX_API")},
+        timeout=10,
+    )
 
     try:
         # Pull the data we want, assume first result is correct
