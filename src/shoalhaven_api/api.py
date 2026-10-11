@@ -92,4 +92,4 @@ def sumReadingsBetween(
 
     results = db.aggregateReadingsBetween(start, end)
 
-    return list(results)
+    return ChartResponse.model_validate(results)
