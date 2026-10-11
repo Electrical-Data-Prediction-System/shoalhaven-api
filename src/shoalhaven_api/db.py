@@ -1,14 +1,14 @@
 import datetime
-from pymongo import MongoClient
-from pymongo.server_api import ServerApi
-from os import getenv
-from dotenv import load_dotenv
-from pymongo.errors import BulkWriteError
-from shoalhaven_api.meter import Meter
-
 import logging
+from datetime import UTC
+from os import getenv
 
-logger = logging.getLogger('uvicorn.error')
+from dotenv import load_dotenv
+from pymongo import MongoClient, UpdateOne
+from pymongo.errors import BulkWriteError
+from pymongo.server_api import ServerApi
+
+logger = logging.getLogger("uvicorn.error")
 logger.setLevel(logging.DEBUG)
 
 load_dotenv()
@@ -31,12 +31,6 @@ def testPing() -> None:
         print(e)
 
 
-def formatISOAsMonth(iso: str) -> str:
-    dt = datetime.datetime.fromisoformat(iso)
-    month = dt.strftime("%B")
-
-    return month
-
 def meterFindOne(query: dict) -> dict | None:
     result = meters.find_one(query)
     return result
@@ -47,28 +41,18 @@ def meterFindAll(query: dict) -> list[dict]:
     return list(results)
 
 
-def meterFindAllAsClass(query: dict) -> list[Meter]:
-    # Fetch dict meter objects
-    results = meterFindAll(query)
-    meters = []
-
-    # Parse into python Meter class
-    for meter in results:
-        newMeter = Meter(meter["_id"], meter["location"], meter["type"], meter["unit"])
-        meters.append(newMeter)
-
-    return meters
-
-
 def meterUpsert(query: dict, data: dict) -> None:
     meters.replace_one(query, data, upsert=True)
 
 
 def aggregateReadingsBetween(
-    startDate: datetime.date | None = None,
-    endDate: datetime.date = datetime.datetime.now(),
-) -> list[dict]:
+    startDate: datetime.datetime | datetime.date | None = None,
+    endDate: datetime.datetime | datetime.date | None = None,
+) -> dict:
     query = {}
+
+    if endDate is None:
+        endDate = datetime.datetime.now(UTC)
 
     if startDate is None:
         startDate = endDate - datetime.timedelta(days=365)
@@ -76,12 +60,12 @@ def aggregateReadingsBetween(
     start = (
         startDate
         if isinstance(startDate, datetime.datetime)
-        else datetime.datetime.combine(startDate, datetime.time.min)
+        else datetime.datetime.combine(startDate, datetime.time.min, UTC)
     )
     end = (
         endDate
         if isinstance(endDate, datetime.datetime)
-        else datetime.datetime.combine(endDate, datetime.time.max)
+        else datetime.datetime.combine(endDate, datetime.time.max, UTC)
     )
 
     query["timestamp"] = {"$gte": start, "$lte": end}
@@ -90,34 +74,44 @@ def aggregateReadingsBetween(
         {"$match": query},
         {
             "$group": {
-                "_id": {"$dateTrunc": {"date": "$timestamp", "unit": "month"}},
+                "_id": {
+                    "$dateTrunc": {
+                        "date": "$timestamp",
+                        "unit": "month",
+                        "timezone": "Australia/Sydney",
+                    }
+                },
                 "KWH": {"$sum": "$kwh"},
             }
         },
         {"$sort": {"_id": 1}},
         {"$project": {"_id": 0, "x": "$_id", "y": "$KWH"}},
     ]
-    results = list(readings.aggregate(pipeline))
+    # results = list(readings.aggregate(pipeline))
+    #
+    # formatted = []
+    # formatted.append({"id": "power"})
+    # formatted.append({"data": results})
+    # return formatted
 
-    formatted = []
-    formatted.append({"id": "power"})
-    formatted.append({"data": results})
+    points = list(readings.aggregate(pipeline))
 
-    return formatted
+    return {"series": [{"name": "KWH", "data": points}]}
 
 
 def readingsGetBetween(
     startDate: datetime.date,
-    endDate: datetime.date = datetime.datetime.now(),
+    endDate: datetime.datetime | datetime.date | None = None,
     meter_id: str | None = None,
 ) -> list[dict]:
     query = {}
 
+    if endDate is None:
+        endDate = datetime.datetime.now(UTC)
+
     query["timestamp"] = {"$gte": startDate, "$lte": endDate}
     if meter_id:
         query["_meterId"] = meter_id
-
-    print(query)
 
     results = readings.find(query, {"_id": 0})
 
@@ -128,25 +122,25 @@ def aggregateMeterPowerBetween(
     meterId: str | None = None,
     startDate: datetime.date | None = None,
     endDate: datetime.date | None = None,
-) -> list[dict]:
+) -> dict:
     query = {}
 
     if meterId:
         query["_meterId"] = meterId
     if endDate is None:
-        endDate = datetime.date.today()
+        endDate = datetime.datetime.now(UTC).date()
     if startDate is None:
         startDate = endDate - datetime.timedelta(days=365)
 
     start = (
         startDate
         if isinstance(startDate, datetime.datetime)
-        else datetime.datetime.combine(startDate, datetime.time.min)
+        else datetime.datetime.combine(startDate, datetime.time.min, UTC)
     )
     end = (
         endDate
         if isinstance(endDate, datetime.datetime)
-        else datetime.datetime.combine(endDate, datetime.time.max)
+        else datetime.datetime.combine(endDate, datetime.time.max, UTC)
     )
 
     query["timestamp"] = {"$gte": start, "$lte": end}
@@ -154,42 +148,38 @@ def aggregateMeterPowerBetween(
     pipeline = [
         {"$match": query},
         {"$group": {"_id": "$_meterId", "KWH": {"$sum": "$kwh"}}},
-        {
-            "$project": {
-                "_id": 0,
-                "name": "$_id",
-                "KWH": 1,
-                "KPI": "4,554",
-                "bounceRate": "45%",
-            }
-        },
+        {"$project": {"_id": 0, "x": "$_id", "y": "$KWH"}},
+        {"$sort": {"x": 1}},
     ]
 
-    results = readings.aggregate(pipeline)
+    # results = readings.aggregate(pipeline)
+    # return list(results)
 
-    return list(results)
+    points = list(readings.aggregate(pipeline))
+
+    return {"series": [{"name": "KWH", "data": points}]}
 
 
 def aggregateAllMeterPowerBetween(
     startDate: datetime.date | None = None,
     endDate: datetime.date | None = None,
-) -> list[dict]:
+) -> dict:
     query = {}
 
     if endDate is None:
-        endDate = datetime.date.today()
+        endDate = datetime.datetime.now(UTC).date()
     if startDate is None:
         startDate = endDate - datetime.timedelta(days=365)
 
     start = (
         startDate
         if isinstance(startDate, datetime.datetime)
-        else datetime.datetime.combine(startDate, datetime.time.min)
+        else datetime.datetime.combine(startDate, datetime.time.min, UTC)
     )
     end = (
         endDate
         if isinstance(endDate, datetime.datetime)
-        else datetime.datetime.combine(endDate, datetime.time.max)
+        else datetime.datetime.combine(endDate, datetime.time.max, UTC)
     )
 
     logger.debug(str(startDate) + " : " + str(endDate))
@@ -203,14 +193,17 @@ def aggregateAllMeterPowerBetween(
             {
                 "$project": {
                     "_id": 0,
-                    "name": "$_id",
-                    "KWH": 1,
+                    "x": "$_id",
+                    "y": "$KWH",
                 }
             },
+            {"$sort": {"x": 1}},
         ]
     )
 
-    return list(results)
+    points = list(results)
+
+    return {"series": [{"name": "KWH", "data": points}]}
 
 
 def readingInsertMany(data: list[dict]) -> tuple[int, int]:
@@ -219,3 +212,16 @@ def readingInsertMany(data: list[dict]) -> tuple[int, int]:
         return len(res.inserted_ids), 0
     except BulkWriteError as e:
         return e.details["nInserted"], len(data) - e.details["nInserted"]
+
+
+def readingUpsertMany(data: list[dict]) -> tuple[int, int]:
+    ops = [
+        UpdateOne(
+            {"_meterId": r["_meterId"], "timestamp": r["timestamp"]},
+            {"$setOnInsert": r},
+            upsert=True,
+        )
+        for r in data
+    ]
+    res = db.readings.bulk_write(ops, ordered=False)
+    return res.upserted_count, len(data) - res.upserted_count
