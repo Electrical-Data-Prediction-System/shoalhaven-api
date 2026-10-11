@@ -1,12 +1,12 @@
 import datetime
-from datetime import UTC
-from pymongo import MongoClient, UpdateOne
-from pymongo.server_api import ServerApi
-from os import getenv
-from dotenv import load_dotenv
-from pymongo.errors import BulkWriteError
-from shoalhaven_api.meter import Meter
 import logging
+from datetime import UTC
+from os import getenv
+
+from dotenv import load_dotenv
+from pymongo import MongoClient, UpdateOne
+from pymongo.errors import BulkWriteError
+from pymongo.server_api import ServerApi
 
 logger = logging.getLogger("uvicorn.error")
 logger.setLevel(logging.DEBUG)
@@ -31,13 +31,6 @@ def testPing() -> None:
         print(e)
 
 
-def formatISOAsMonth(iso: str) -> str:
-    dt = datetime.datetime.fromisoformat(iso)
-    month = dt.strftime("%B")
-
-    return month
-
-
 def meterFindOne(query: dict) -> dict | None:
     result = meters.find_one(query)
     return result
@@ -55,7 +48,7 @@ def meterUpsert(query: dict, data: dict) -> None:
 def aggregateReadingsBetween(
     startDate: datetime.datetime | datetime.date | None = None,
     endDate: datetime.datetime | datetime.date | None = None,
-) -> list[dict]:
+) -> dict:
     query = {}
 
     if endDate is None:
@@ -94,13 +87,16 @@ def aggregateReadingsBetween(
         {"$sort": {"_id": 1}},
         {"$project": {"_id": 0, "x": "$_id", "y": "$KWH"}},
     ]
-    results = list(readings.aggregate(pipeline))
+    # results = list(readings.aggregate(pipeline))
+    #
+    # formatted = []
+    # formatted.append({"id": "power"})
+    # formatted.append({"data": results})
+    # return formatted
 
-    formatted = []
-    formatted.append({"id": "power"})
-    formatted.append({"data": results})
+    points = list(readings.aggregate(pipeline))
 
-    return formatted
+    return {"series": [{"name": "KWH", "data": points}]}
 
 
 def readingsGetBetween(
@@ -126,7 +122,7 @@ def aggregateMeterPowerBetween(
     meterId: str | None = None,
     startDate: datetime.date | None = None,
     endDate: datetime.date | None = None,
-) -> list[dict]:
+) -> dict:
     query = {}
 
     if meterId:
@@ -152,24 +148,22 @@ def aggregateMeterPowerBetween(
     pipeline = [
         {"$match": query},
         {"$group": {"_id": "$_meterId", "KWH": {"$sum": "$kwh"}}},
-        {
-            "$project": {
-                "_id": 0,
-                "name": "$_id",
-                "KWH": 1,
-            }
-        },
+        {"$project": {"_id": 0, "x": "$_id", "y": "$KWH"}},
+        {"$sort": {"x": 1}},
     ]
 
-    results = readings.aggregate(pipeline)
+    # results = readings.aggregate(pipeline)
+    # return list(results)
 
-    return list(results)
+    points = list(readings.aggregate(pipeline))
+
+    return {"series": [{"name": "KWH", "data": points}]}
 
 
 def aggregateAllMeterPowerBetween(
     startDate: datetime.date | None = None,
     endDate: datetime.date | None = None,
-) -> list[dict]:
+) -> dict:
     query = {}
 
     if endDate is None:
@@ -199,14 +193,17 @@ def aggregateAllMeterPowerBetween(
             {
                 "$project": {
                     "_id": 0,
-                    "name": "$_id",
-                    "KWH": 1,
+                    "x": "$_id",
+                    "y": "$KWH",
                 }
             },
+            {"$sort": {"x": 1}},
         ]
     )
 
-    return list(results)
+    points = list(results)
+
+    return {"series": [{"name": "KWH", "data": points}]}
 
 
 def readingInsertMany(data: list[dict]) -> tuple[int, int]:
