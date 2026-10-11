@@ -88,12 +88,16 @@ def pushReadings(
             help="Granularity of minutes to push. 60: hourly, 240: 4-hourly, 1440: daily"
         ),
     ] = 60,
+    replace: Annotated[
+        bool,
+        typer.Argument(help="Replace all readings in cloud without upsert."),
+    ] = False,
 ):
     """Pushes and updates all readings from CSV to MongoDB
 
     Reads the CSV, creates Reader objects, and upserts each one into
     the MongoDB collection."""
-    reading.pushReadings(file, granularity_minutes)
+    reading.pushReadings(file, granularity_minutes, replace)
 
 
 @app.command()

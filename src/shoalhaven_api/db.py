@@ -1,11 +1,11 @@
 import datetime
-from pymongo import MongoClient
+from datetime import UTC
+from pymongo import MongoClient, UpdateOne
 from pymongo.server_api import ServerApi
 from os import getenv
 from dotenv import load_dotenv
 from pymongo.errors import BulkWriteError
 from shoalhaven_api.meter import Meter
-
 import logging
 
 logger = logging.getLogger("uvicorn.error")
@@ -48,19 +48,6 @@ def meterFindAll(query: dict) -> list[dict]:
     return list(results)
 
 
-def meterFindAllAsClass(query: dict) -> list[Meter]:
-    # Fetch dict meter objects
-    results = meterFindAll(query)
-    meters = []
-
-    # Parse into python Meter class
-    for meter in results:
-        newMeter = Meter(meter["_id"], meter["location"], meter["type"], meter["unit"])
-        meters.append(newMeter)
-
-    return meters
-
-
 def meterUpsert(query: dict, data: dict) -> None:
     meters.replace_one(query, data, upsert=True)
 
@@ -72,7 +59,7 @@ def aggregateReadingsBetween(
     query = {}
 
     if endDate is None:
-        endDate = datetime.datetime.now()
+        endDate = datetime.datetime.now(UTC)
 
     if startDate is None:
         startDate = endDate - datetime.timedelta(days=365)
@@ -80,12 +67,12 @@ def aggregateReadingsBetween(
     start = (
         startDate
         if isinstance(startDate, datetime.datetime)
-        else datetime.datetime.combine(startDate, datetime.time.min)
+        else datetime.datetime.combine(startDate, datetime.time.min, UTC)
     )
     end = (
         endDate
         if isinstance(endDate, datetime.datetime)
-        else datetime.datetime.combine(endDate, datetime.time.max)
+        else datetime.datetime.combine(endDate, datetime.time.max, UTC)
     )
 
     query["timestamp"] = {"$gte": start, "$lte": end}
@@ -94,7 +81,13 @@ def aggregateReadingsBetween(
         {"$match": query},
         {
             "$group": {
-                "_id": {"$dateTrunc": {"date": "$timestamp", "unit": "month"}},
+                "_id": {
+                    "$dateTrunc": {
+                        "date": "$timestamp",
+                        "unit": "month",
+                        "timezone": "Australia/Sydney",
+                    }
+                },
                 "KWH": {"$sum": "$kwh"},
             }
         },
@@ -118,13 +111,11 @@ def readingsGetBetween(
     query = {}
 
     if endDate is None:
-        endDate = datetime.datetime.now()
+        endDate = datetime.datetime.now(UTC)
 
     query["timestamp"] = {"$gte": startDate, "$lte": endDate}
     if meter_id:
         query["_meterId"] = meter_id
-
-    print(query)
 
     results = readings.find(query, {"_id": 0})
 
@@ -141,19 +132,19 @@ def aggregateMeterPowerBetween(
     if meterId:
         query["_meterId"] = meterId
     if endDate is None:
-        endDate = datetime.date.today()
+        endDate = datetime.datetime.now(UTC).date()
     if startDate is None:
         startDate = endDate - datetime.timedelta(days=365)
 
     start = (
         startDate
         if isinstance(startDate, datetime.datetime)
-        else datetime.datetime.combine(startDate, datetime.time.min)
+        else datetime.datetime.combine(startDate, datetime.time.min, UTC)
     )
     end = (
         endDate
         if isinstance(endDate, datetime.datetime)
-        else datetime.datetime.combine(endDate, datetime.time.max)
+        else datetime.datetime.combine(endDate, datetime.time.max, UTC)
     )
 
     query["timestamp"] = {"$gte": start, "$lte": end}
@@ -182,19 +173,19 @@ def aggregateAllMeterPowerBetween(
     query = {}
 
     if endDate is None:
-        endDate = datetime.date.today()
+        endDate = datetime.datetime.now(UTC).date()
     if startDate is None:
         startDate = endDate - datetime.timedelta(days=365)
 
     start = (
         startDate
         if isinstance(startDate, datetime.datetime)
-        else datetime.datetime.combine(startDate, datetime.time.min)
+        else datetime.datetime.combine(startDate, datetime.time.min, UTC)
     )
     end = (
         endDate
         if isinstance(endDate, datetime.datetime)
-        else datetime.datetime.combine(endDate, datetime.time.max)
+        else datetime.datetime.combine(endDate, datetime.time.max, UTC)
     )
 
     logger.debug(str(startDate) + " : " + str(endDate))
@@ -224,3 +215,16 @@ def readingInsertMany(data: list[dict]) -> tuple[int, int]:
         return len(res.inserted_ids), 0
     except BulkWriteError as e:
         return e.details["nInserted"], len(data) - e.details["nInserted"]
+
+
+def readingUpsertMany(data: list[dict]) -> tuple[int, int]:
+    ops = [
+        UpdateOne(
+            {"_meterId": r["_meterId"], "timestamp": r["timestamp"]},
+            {"$setOnInsert": r},
+            upsert=True,
+        )
+        for r in data
+    ]
+    res = db.readings.bulk_write(ops, ordered=False)
+    return res.upserted_count, len(data) - res.upserted_count

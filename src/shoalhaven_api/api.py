@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import shoalhaven_api.db as db
@@ -61,7 +61,7 @@ def getReadingsBetween(
     end: datetime | None = None,
 ) -> list[dict]:
     if not end:
-        end = datetime.now()
+        end = datetime.now(UTC)
     if end <= start:
         raise HTTPException(
             status_code=400, detail="Start date cannot be ahead of end date"
@@ -78,7 +78,7 @@ def sumReadingsBetween(
     start: datetime | None = None, end: datetime | None = None
 ) -> list[dict]:
     if not end:
-        end = datetime.now()
+        end = datetime.now(UTC)
     if start is None:
         start = end - timedelta(days=365)
 

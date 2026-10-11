@@ -91,7 +91,7 @@ def loadReadingsDataframe(file, granularity_minutes) -> list[dict]:
 
 
 # Drops reading table in db and recreates it
-def pushReadings(file, granularity_minutes):
+def pushReadings(file, granularity_minutes, replace: bool = False):
     console = Console()
     # Check for file before doing anything
     console.out(f"Loading readings from {file}...")
@@ -99,9 +99,10 @@ def pushReadings(file, granularity_minutes):
     if not records:
         return
 
-    # Once we have a file, we can safely drop the readings table, backup CSV exists also
-    console.out(f"Loaded {len(records)} readings, dropping readings table")
-    db.readings.drop()
+    # Once we have a file, we can safely drop the readings table if required, backup CSV exists also
+    if replace:
+        console.out(f"Loaded {len(records)} readings, dropping readings table")
+        db.readings.drop()
 
     console.out("Creating meterId to timestamp index table...")
     db.readings.create_index([("_meterId", 1), ("timestamp", 1)])
@@ -118,7 +119,10 @@ def pushReadings(file, granularity_minutes):
         futures = []
         with ThreadPoolExecutor(max_workers=4) as ex:
             for b in batches:
-                fut = ex.submit(db.readingInsertMany, b)
+                if replace:
+                    fut = ex.submit(db.readingInsertMany, b)
+                else:
+                    fut = ex.submit(db.readingUpsertMany, b)
                 fut.add_done_callback(
                     lambda f, size=len(b): progress.advance(task, size)
                 )
