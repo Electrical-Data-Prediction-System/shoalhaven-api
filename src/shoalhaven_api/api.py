@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import shoalhaven_api.db as db
 from shoalhaven_api.geocoding import geocodeLocationString
+from shoalhaven_api.openelec import test
 from shoalhaven_api.schemas import ChartResponse, Meter, MeterResponse, Reading
 
 app = FastAPI()
@@ -93,3 +94,8 @@ def sumReadingsBetween(
     results = db.aggregateReadingsBetween(start, end)
 
     return ChartResponse.model_validate(results)
+
+
+@app.get("/openelec/test", response_model=ChartResponse)
+def openelecTest() -> ChartResponse:
+    return test()
