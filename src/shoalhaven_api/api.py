@@ -98,4 +98,4 @@ def sumReadingsBetween(
 
 @app.get("/openelec/test", response_model=ChartResponse)
 def openelecTest() -> ChartResponse:
-    return test()
+    return ChartResponse.model_validate(test())
