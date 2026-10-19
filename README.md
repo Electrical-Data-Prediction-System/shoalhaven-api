@@ -37,11 +37,13 @@ Dates are formatted in ISO when querying, e.g. `2026-08-03 05:35:00`.
 | Route | Description |
 | --- | --- |
 | `GET /` | Health check |
+| `GET /meters?location=` | Searches meters by address, street, postcode, suburb, region, or country |
 | `GET /meters/{meter_id}` | Returns a single meter object by ID |
-| `GET /meters/{meter_id}/aggregate-power?start=&end=` | Sums KWH per meter between dates |
+| `GET /meters/{meter_id}/aggregate-power?start=&end=&interval=` | Sums KWH per meter, optionally grouped by `5m`, `week`, `month`, or `year` buckets |
 | `GET /meters/power/aggregate-power?start=&end=` | Sums KWH for all meters between dates |
 | `GET /locations/geocode/{query}` | Geocodes a location string into structured data |
 | `GET /meters/{meter_id}/readings?start=&end=` | Raw readings between two dates, optionally filtered by meter |
+| `GET /meters/{meter_id}/readings/latest` | Timestamp of the latest reading for a meter |
 | `GET /readings/aggregate?start=&end=` | Monthly KWH aggregates between two dates |
 
 

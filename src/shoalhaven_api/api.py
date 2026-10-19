@@ -1,6 +1,8 @@
 from datetime import UTC, datetime, timedelta
+import re
+from typing import Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 import shoalhaven_api.db as db
@@ -19,6 +21,23 @@ app.add_middleware(
 @app.get("/")
 async def root():
     return {"message": "Hello World"}
+
+
+@app.get("/meters", response_model=list[Meter])
+def search_meters(location: str = Query(min_length=2, max_length=100)) -> list[Meter]:
+    search_term = location.strip()
+    if len(search_term) < 2:
+        return []
+
+    pattern = re.escape(search_term)
+    query = {
+        "$or": [
+            {f"location.{field}": {"$regex": pattern, "$options": "i"}}
+            for field in ("fullAddress", "street", "postcode", "place", "region", "country")
+        ]
+    }
+    meters = db.meterFindAll(query)
+    return [Meter.model_validate(meter) for meter in meters]
 
 
 @app.get("/meters/{meter_id}", response_model=MeterResponse)
@@ -42,11 +61,22 @@ def getAllAggregatedMeterPower(
 
 @app.get("/meters/{meter_id}/aggregate-power", response_model=ChartResponse)
 def getAggregatedMeterPower(
-    meter_id: str, start: datetime | None = None, end: datetime | None = None
+    meter_id: str,
+    start: datetime | None = None,
+    end: datetime | None = None,
+    interval: Literal["5m", "week", "month", "year"] | None = None,
 ) -> ChartResponse:
-    results = db.aggregateMeterPowerBetween(meter_id, start, end)
+    if interval is not None:
+        results = db.aggregateMeterPowerByInterval(meter_id, interval, start, end)
+    else:
+        results = db.aggregateMeterPowerBetween(meter_id, start, end)
 
     return ChartResponse.model_validate(results)
+
+
+@app.get("/meters/{meter_id}/readings/latest")
+def getLatestMeterReading(meter_id: str) -> dict[str, datetime | None]:
+    return {"timestamp": db.readingLatestTimestamp(meter_id)}
 
 
 @app.get("/locations/geocode/{query}")

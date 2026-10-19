@@ -118,6 +118,15 @@ def readingsGetBetween(
     return list(results)
 
 
+def readingLatestTimestamp(meterId: str) -> datetime.datetime | None:
+    result = readings.find_one(
+        {"_meterId": meterId},
+        {"_id": 0, "timestamp": 1},
+        sort=[("timestamp", -1)],
+    )
+    return result["timestamp"] if result else None
+
+
 def aggregateMeterPowerBetween(
     meterId: str | None = None,
     startDate: datetime.date | None = None,
@@ -156,6 +165,54 @@ def aggregateMeterPowerBetween(
     # return list(results)
 
     points = list(readings.aggregate(pipeline))
+
+    return {"series": [{"name": "KWH", "data": points}]}
+
+
+def aggregateMeterPowerByInterval(
+    meterId: str,
+    interval: str,
+    startDate: datetime.datetime | None = None,
+    endDate: datetime.datetime | None = None,
+) -> dict:
+    interval_config = {
+        "5m": {"unit": "minute", "binSize": 5},
+        "week": {"unit": "week", "binSize": 1},
+        "month": {"unit": "month", "binSize": 1},
+        "year": {"unit": "year", "binSize": 1},
+    }
+    bucket = interval_config[interval]
+    query: dict = {"_meterId": meterId}
+
+    timestamp_filter = {}
+    if startDate is not None:
+        timestamp_filter["$gte"] = startDate
+    if endDate is not None:
+        timestamp_filter["$lte"] = endDate
+    if timestamp_filter:
+        query["timestamp"] = timestamp_filter
+
+    points = list(
+        readings.aggregate(
+            [
+                {"$match": query},
+                {
+                    "$group": {
+                        "_id": {
+                            "$dateTrunc": {
+                                "date": "$timestamp",
+                                **bucket,
+                                "timezone": "Australia/Sydney",
+                            }
+                        },
+                        "KWH": {"$sum": "$kwh"},
+                    }
+                },
+                {"$sort": {"_id": 1}},
+                {"$project": {"_id": 0, "x": "$_id", "y": "$KWH"}},
+            ]
+        )
+    )
 
     return {"series": [{"name": "KWH", "data": points}]}
 
