@@ -46,6 +46,8 @@ Dates are formatted in ISO when querying, e.g. `2026-08-03 05:35:00`.
 | `GET /meters/{meter_id}/readings/latest` | Timestamp of the latest reading for a meter |
 | `GET /readings/aggregate?start=&end=` | Monthly KWH aggregates between two dates |
 
+## Testing
+Run the API route tests with `uv run pytest` from this directory. Tests use mocked database calls and do not require a MongoDB connection.
 
 ## Data Model
 - **Meter**: `_id`, `location`, `type`, `unit`
