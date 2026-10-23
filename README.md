@@ -11,22 +11,33 @@ A `fastapi` implementation that parses CSV data, making it query-able and perfor
 - `uv` installed.
 - Python >=3.13 installed.
 
+## Environment variables
+Create a .env file that specifies
+```
+MONGODB_CONNECTION_STRING=              # connection string to mongodb database
+MAPBOX_API=                             # connection string to mapbox, only needed if converting location string into subcomponents
+APP_ENV="dev"                           # specifies which database should be selected, 
+                                        # dev for demo database, prod for hydrochart database,
+                                        # need account that can access the respective database in the mongoDB connection string
+```
+
+
 ## Setup
 1. Install dependencies and sync the environment: `uv sync`
 2. Copy `.env` configuration with your `MONGODB_CONNECTION_STRING` and `MAPBOX_API` keys, see `.env.example`
-3. Use `shoalhaven --help` to get started!
+3. Use `uv run shoalhaven --help` to get started!
 
 ## Using the CLI
-`shoalhaven serve` runs the FastAPI server.
+`uv run shoalhaven serve` runs the FastAPI server.
 
 | Command | Description |
 | --- | --- |
-| `shoalhaven pushMeters [file=./csv/meters.csv] [granularity=60]` | Upserts all meters from CSV (default `./csv/meters.csv`) into MongoDB, granularity filters only uploads rows whose `hour * 60 + minute` is divisible by it |
-| `shoalhaven allMeters` | Lists every meter in MongoDB |
-| `shoalhaven queryMeters` | Filters meters by `--type`, `--unit`, or a partial `--location` search |
-| `shoalhaven pushReadings [file] [granularity]` | Drops and repopulates readings from CSV. `granularity` in minutes: `60` hourly, `240` 4-hourly, `1440` daily (default `60`) |
-| `shoalhaven ping` | Tests connectivity to the MongoDB instance |
-| `shoalhaven serve [host=0.0.0.0] [port=8000]` | Starts the FastAPI dev server |
+| `uv run shoalhaven pushMeters [file=./csv/meters.csv] [granularity=60]` | Upserts all meters from CSV (default `./csv/meters.csv`) into MongoDB, granularity filters only uploads rows whose `hour * 60 + minute` is divisible by it |
+| `uv run shoalhaven allMeters` | Lists every meter in MongoDB |
+| `uv run shoalhaven queryMeters` | Filters meters by `--type`, `--unit`, or a partial `--location` search |
+| `uv run shoalhaven pushReadings [file] [granularity]` | Drops and repopulates readings from CSV. `granularity` in minutes: `60` hourly, `240` 4-hourly, `1440` daily (default `60`) |
+| `uv run shoalhaven ping` | Tests connectivity to the MongoDB instance |
+| `uv run shoalhaven serve [host=0.0.0.0] [port=8000]` | Starts the FastAPI dev server |
 
 ### Warning
 `pushReadings` is currently destructive, it drops the collection before adding from the specified CSV.
