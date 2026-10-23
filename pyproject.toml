@@ -70,3 +70,6 @@ dev = [
 
 [tool.uv]
 package = true
+
+[tool.vercel]
+entrypoint = "src.shoalhaven_api.api:app"
