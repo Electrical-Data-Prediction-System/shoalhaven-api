@@ -36,6 +36,7 @@ dependencies = [
   "python-multipart==0.0.29",
   "pyyaml==6.0.3",
   "requests>=2.34.2",
+  "faker>=33.1.0",
   "rich==15.0.0",
   "rich-toolkit==0.19.10",
   "rignore==0.7.6",
