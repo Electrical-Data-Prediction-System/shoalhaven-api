@@ -16,10 +16,10 @@ load_dotenv()
 
 # MongoDB client setup
 uri = getenv("MONGODB_CONNECTION_STRING")
-enivronment = getenv("APP_ENV")
+environment = getenv("APP_ENV")
 client = MongoClient(uri, server_api=ServerApi("1"))
 
-db = client.get_database("demo") if enivronment == "dev" else client.get_database("hydrochart")
+db = client.get_database("demo") if environment == "dev" else client.get_database("hydrochart")
 meters = db.get_collection("meter")
 readings = db.get_collection("reading")
 
