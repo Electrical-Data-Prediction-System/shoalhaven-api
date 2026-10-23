@@ -18,7 +18,7 @@ load_dotenv()
 uri = getenv("MONGODB_CONNECTION_STRING")
 client = MongoClient(uri, server_api=ServerApi("1"))
 
-db = client.get_database("hydrochart")
+db = client.get_database("demo")
 meters = db.get_collection("meter")
 readings = db.get_collection("reading")
 
