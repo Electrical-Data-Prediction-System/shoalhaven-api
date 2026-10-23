@@ -26,9 +26,9 @@ class ChartResponse(BaseModel):
 class Location(BaseModel):
     fullAddress: str
     street: str
-    postcode: str
+    postcode: str | None = None
     place: str
-    region: str
+    region: str | None = None
     country: str
     coordinates: tuple[float, float]
 

@@ -37,7 +37,14 @@ def search_meters(location: str = Query(min_length=2, max_length=100)) -> list[M
         ]
     }
     meters = db.meterFindAll(query)
-    return [Meter.model_validate(meter) for meter in meters]
+
+    return [
+        Meter.model_validate({
+            **meter,
+            "_id": str(meter["_id"])
+        })
+        for meter in meters
+    ]
 
 
 @app.get("/meters/{meter_id}", response_model=MeterResponse)
