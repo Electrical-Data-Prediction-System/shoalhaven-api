@@ -11,13 +11,18 @@ from shoalhaven_api.schemas import (
     ChartPoint,
     ChartResponse,
     ChartSeries, 
+    ForecastResponse,
     Meter,
     MeterPowerRow,
     MeterResponse, 
+    MeterTotal,
     Reading,
 )
 
 app = FastAPI()
+
+# How far back a single meter's chart looks by default, per bucket size
+DEFAULT_RANGE_DAYS = {"5m": 1, "hour": 7, "day": 90, "week": 365, "month": 365, "year": 365}
 
 app.add_middleware(
     CORSMiddleware,
@@ -82,6 +87,21 @@ def getAllAggregatedMeterPower(
 
     return db.aggregateMeterPowerRows(meterIds, interval, start, end)
 
+@app.get("/meters/power/totals", response_model=list[MeterTotal])
+def getMeterTotals(
+    meterIds: list[str] | None = Query(default=None),
+    start: datetime | None = None,
+    end: datetime | None = None,
+) -> list[dict[str, Any]]:
+
+    validate_meter_ids(meterIds)
+    # Data is historical, so default to the year before the latest reading rather than today
+    if end is None:
+        end = db.readingLatestTimestamp()
+    start, end = validate_date_range(start, end, 365)
+
+    return db.aggregateMeterTotals(meterIds, start, end)
+
 @app.get("/meters/power/raw-power", response_model=list[MeterPowerRow])
 def getRawMeterPower(
     meterIds: list[str] | None = Query(default=None),
@@ -103,8 +123,11 @@ def getAggregatedMeterPower(
     end: datetime | None = None,
     interval: db.INTERVAL | None = None,
 ) -> ChartResponse:
-    
-    start, end = validate_date_range(start, end, 30)
+
+    # Data is historical, so count back from the meter's latest reading rather than today
+    if end is None:
+        end = db.readingLatestTimestamp(meter_id)
+    start, end = validate_date_range(start, end, DEFAULT_RANGE_DAYS.get(interval, 30))
 
     rows = db.aggregateMeterPowerRows(meter_id, interval, start, end)
     
@@ -116,6 +139,21 @@ def getAggregatedMeterPower(
     return ChartResponse(
         series=[ChartSeries(name="KWH", data=points)]
     )
+
+
+# Forecasts
+
+@app.get("/meters/{meter_id}/forecast", response_model=ForecastResponse)
+def getMeterForecast(
+    meter_id: str,
+    granularity: Literal["hour", "day"] = "day",
+) -> ForecastResponse:
+    forecast = db.forecastFindOne(meter_id, granularity)
+
+    if not forecast:
+        raise HTTPException(status_code=404, detail="No forecast found")
+
+    return ForecastResponse.model_validate(forecast)
 
 
 # Readings

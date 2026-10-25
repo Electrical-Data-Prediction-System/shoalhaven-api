@@ -31,6 +31,13 @@ class MeterPowerRow(BaseModel):
     __pydantic_extra__: dict[str, float] = Field(init=False)
     model_config = ConfigDict(extra="allow")
 
+class MeterTotal(BaseModel):
+    """Total kWh used by one meter over a date range"""
+
+    name: str
+    KWH: float
+
+
 class Location(BaseModel):
     fullAddress: str
     street: str
@@ -58,3 +65,30 @@ class Reading(BaseModel):
     kwh: float
     timestamp: datetime
     model_config = ConfigDict(populate_by_name=True)
+
+
+class ForecastPoint(BaseModel):
+    x: datetime
+    p10: float
+    p50: float
+    p90: float
+
+
+class ForecastBacktest(BaseModel):
+    """Error on the held-out final horizon, for the model and the seasonal-naive baseline"""
+
+    horizon: int
+    modelMae: float | None
+    baselineMae: float | None
+    modelMape: float | None
+    baselineMape: float | None
+
+
+class ForecastResponse(BaseModel):
+    meterId: str
+    granularity: str
+    model: str
+    generatedAt: datetime
+    anchor: datetime
+    points: list[ForecastPoint]
+    backtest: ForecastBacktest | None = None

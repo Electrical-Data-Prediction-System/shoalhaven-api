@@ -38,9 +38,20 @@ APP_ENV="dev"                           # specifies which database should be sel
 | `uv run shoalhaven pushReadings [file] [granularity]` | Drops and repopulates readings from CSV. `granularity` in minutes: `60` hourly, `240` 4-hourly, `1440` daily (default `60`) |
 | `uv run shoalhaven ping` | Tests connectivity to the MongoDB instance |
 | `uv run shoalhaven serve [host=0.0.0.0] [port=8000]` | Starts the FastAPI dev server |
+| `uv run --group forecast shoalhaven forecast [--granularity both] [--size 5M] [--meter-id ID]` | Forecasts usage with Timestral and saves it to MongoDB (see Forecasting) |
 
 ### Warning
 `pushReadings` is currently destructive, it drops the collection before adding from the specified CSV.
+
+## Forecasting
+Forecasts are made ahead of time from the CLI and saved to the `forecast` collection, so the API never has to load the model.
+
+- **Model:** [Timestral](https://github.com/mistralai/timestral), Mistral's pretrained time-series model (modified MIT licence). It isn't an LLM: it takes past kWh values and returns future ones with a p10-p90 range. It runs on CPU, and `5M` is a 21 MB download cached on first use.
+- **Install:** the model needs PyTorch, so it lives in an optional group. Run `uv sync --group forecast`. A normal `uv sync` (Docker, Vercel) doesn't install it.
+- **Products:** `hour` is the next 7 days, hourly, from 8 weeks of history. `day` is the next 30 days, daily, from 2 years of history. Both start where the latest readings end.
+- **Backtest:** each run holds back the final horizon of real data and scores the model against a seasonal-naive baseline (repeat the last week). Both scores are printed and saved with the forecast.
+
+Re-run the command whenever new readings are loaded.
 
 ## API Routes
 Dates are formatted in ISO when querying, e.g. `2026-08-03 05:35:00`.
@@ -50,7 +61,8 @@ Dates are formatted in ISO when querying, e.g. `2026-08-03 05:35:00`.
 | `GET /` | Health check |
 | `GET /meters?location=` | Searches meters by address, street, postcode, suburb, region, or country |
 | `GET /meters/{meter_id}` | Returns a single meter object by ID |
-| `GET /meters/{meter_id}/aggregate-power?start=&end=&interval=` | Sums KWH per meter, optionally grouped by `5m`, `week`, `month`, or `year` buckets |
+| `GET /meters/{meter_id}/aggregate-power?start=&end=&interval=` | Sums KWH per meter, optionally grouped by `5m`, `hour`, `day`, `week`, `month`, or `year` buckets |
+| `GET /meters/{meter_id}/forecast?granularity=` | Saved `hour` or `day` forecast (p10/p50/p90 points and backtest scores), 404 if none has been generated |
 | `GET /meters/power/aggregate-power?start=&end=` | Sums KWH for all meters between dates |
 | `GET /locations/geocode/{query}` | Geocodes a location string into structured data |
 | `GET /meters/{meter_id}/readings?start=&end=` | Raw readings between two dates, optionally filtered by meter |
@@ -64,6 +76,7 @@ Run the API route tests with `uv run pytest` from this directory. Tests use mock
 - **Meter**: `_id`, `location`, `type`, `unit`
 - **Location**: `fullAddress`, `street`, `postcode`, `place`, `region`, `country`, `coordinates` (longitude, latitude)
 - **Reading**: `_meterId`, `kwh`, `timestamp`
+- **Forecast**: `_id` (`meterId:granularity`), `meterId`, `granularity`, `model`, `generatedAt`, `anchor`, `points` (`x`, `p10`, `p50`, `p90`), `backtest`
 
 ## Project Structure
 ```
@@ -73,6 +86,7 @@ src/shoalhaven_api/
 ├── db.py         # MongoDB client + query/aggregation helpers
 ├── meter.py      # Meter model + CSV ingestion
 ├── reading.py    # Reading model + fast pandas CSV ingestion
+├── forecast.py   # Timestral + baseline forecasting and backtests
 ├── location.py   # Location model
 └── geocoding.py  # MapBox geocoding integration
 ```

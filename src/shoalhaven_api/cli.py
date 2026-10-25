@@ -148,6 +148,63 @@ def seedFake(
 
 
 @app.command()
+def forecast(
+    granularity: Annotated[
+        str, typer.Option(help="Bucket size to forecast: hour (7 days ahead), day (30 days ahead) or both")
+    ] = "both",
+    size: Annotated[
+        str, typer.Option(help="Timestral model size: 5M, 28M, 123M or 209M")
+    ] = "5M",
+    meter_id: Annotated[
+        Optional[list[str]], typer.Option(help="Only forecast these meters (repeatable)")
+    ] = None,
+    backtest: Annotated[
+        bool, typer.Option(help="Score the model against a seasonal-naive baseline")
+    ] = True,
+):
+    """Forecasts meter usage with Timestral and saves it to MongoDB
+
+    Needs the optional dependencies: uv sync --group forecast"""
+    from shoalhaven_api import forecast as fc
+
+    if granularity not in ("hour", "day", "both"):
+        raise typer.BadParameter("granularity must be hour, day or both")
+
+    model = fc.TimestralForecaster(size)
+    granularities = ["hour", "day"] if granularity == "both" else [granularity]
+
+    for g in granularities:
+        docs = fc.run_forecasts(g, meter_id, model, backtest)
+
+        table = Table(title=f"{model.name} | {g} forecast ({fc.GRANULARITY_CONFIG[g]['horizon']} {g}s)")
+        table.add_column("Meter")
+        table.add_column("Model MAE (kWh)", justify="right")
+        table.add_column("Baseline MAE (kWh)", justify="right")
+        table.add_column("Model MAPE", justify="right")
+        table.add_column("Beats baseline", justify="center")
+
+        wins = 0
+        for doc in docs:
+            score = doc["backtest"]
+            if not score or score["modelMae"] is None:
+                table.add_row(doc["meterId"], "-", "-", "-", "-")
+                continue
+            win = score["modelMae"] < score["baselineMae"]
+            wins += win
+            mape = f"{score['modelMape']:.1f}%" if score["modelMape"] is not None else "-"
+            table.add_row(
+                doc["meterId"],
+                f"{score['modelMae']:.3f}",
+                f"{score['baselineMae']:.3f}",
+                mape,
+                "[green]✓[/green]" if win else "[red]✗[/red]",
+            )
+
+        console.print(table)
+        console.print(f"Saved {len(docs)} {g} forecasts" + (f", model wins on {wins}" if backtest else ""))
+
+
+@app.command()
 def generateFakeCsv(
     meter_count: Annotated[int, typer.Option(help="Number of fake meters to generate")] = 10,
     years: Annotated[float, typer.Option(help="Years of data to generate")] = 2.0,

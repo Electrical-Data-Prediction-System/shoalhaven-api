@@ -67,9 +67,23 @@ build-backend = "hatchling.build"
 dev = [
     "pytest>=9.1.1",
 ]
+# Optional: only needed to generate forecasts from the CLI (uv sync --group forecast)
+forecast = [
+    "timestral",
+    "torch>=2.4",
+]
 
 [tool.uv]
 package = true
+
+[tool.uv.sources]
+timestral = { git = "https://github.com/mistralai/timestral.git" }
+torch = [{ index = "pytorch-cpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [tool.vercel]
 entrypoint = "src.shoalhaven_api.api:app"

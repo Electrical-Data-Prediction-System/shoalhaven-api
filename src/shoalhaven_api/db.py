@@ -15,10 +15,12 @@ logger.setLevel(logging.DEBUG)
 load_dotenv()
 
 # Constants
-INTERVAL = Literal["5m", "week", "month", "year"]
+INTERVAL = Literal["5m", "hour", "day", "week", "month", "year"]
 
 INTERVAL_CONFIG = {
     "5m": {"unit": "minute", "binSize": 5},
+    "hour": {"unit": "hour", "binSize": 1},
+    "day": {"unit": "day", "binSize": 1},
     "week": {"unit": "week", "binSize": 1},
     "month": {"unit": "month", "binSize": 1},
     "year": {"unit": "year", "binSize": 1},
@@ -33,6 +35,7 @@ client = MongoClient(uri, server_api=ServerApi("1"))
 db = client.get_database("demo") if environment == "dev" else client.get_database("hydrochart")
 meters = db.get_collection("meter")
 readings = db.get_collection("reading")
+forecasts = db.get_collection("forecast")
 
 # Testing
 
@@ -160,6 +163,30 @@ def aggregateMeterPowerRows(
 
 
 
+def aggregateMeterTotals(
+    meter_ids: list[str] | None = None,
+    startDate: datetime | date | None = None,
+    endDate: datetime | date | None = None,
+) -> list[dict[str, Any]]:
+    """Return one kWh total per meter between two dates."""
+
+    start, end = _date_range(startDate, endDate)
+
+    query: dict[str, Any] = {"timestamp": {"$gte": start, "$lte": end}}
+    if meter_ids is not None:
+        query["_meterId"] = {"$in": meter_ids}
+
+    pipeline = [
+        {"$match": query},
+        {"$group": {"_id": "$_meterId", "KWH": {"$sum": "$kwh"}}},
+        {"$sort": {"_id": 1}},
+        {"$project": {"_id": 0, "name": "$_id", "KWH": {"$round": ["$KWH", 2]}}},
+    ]
+
+    return list(readings.aggregate(pipeline))
+
+
+
 # Readings
 
 def aggregateReadingsBetween(
@@ -216,9 +243,9 @@ def readingsGetBetween(
     return list(results)
 
 
-def readingLatestTimestamp(meterId: str) -> datetime | None:
+def readingLatestTimestamp(meterId: str | None = None) -> datetime | None:
     result = readings.find_one(
-        {"_meterId": meterId},
+        {"_meterId": meterId} if meterId else {},
         {"_id": 0, "timestamp": 1},
         sort=[("timestamp", -1)],
     )
@@ -242,8 +269,19 @@ def readingUpsertMany(data: list[dict]) -> tuple[int, int]:
         )
         for r in data
     ]
-    res = db.readings.bulk_write(ops, ordered=False)
+    res = readings.bulk_write(ops, ordered=False)
     return res.upserted_count, len(data) - res.upserted_count
+
+
+
+# Forecasts
+
+def forecastUpsert(doc: dict) -> None:
+    forecasts.replace_one({"_id": doc["_id"]}, doc, upsert=True)
+
+
+def forecastFindOne(meterId: str, granularity: str) -> dict | None:
+    return forecasts.find_one({"_id": f"{meterId}:{granularity}"})
 
 
 
