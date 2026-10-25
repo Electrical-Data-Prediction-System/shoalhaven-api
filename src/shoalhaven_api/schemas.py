@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ChartPoint(BaseModel):
@@ -23,6 +23,14 @@ class ChartResponse(BaseModel):
     series: list[ChartSeries]
 
 
+class MeterPowerRow(BaseModel):
+    """A timestamp with one dynamic numeric field per meter."""
+
+    date: datetime
+
+    __pydantic_extra__: dict[str, float] = Field(init=False)
+    model_config = ConfigDict(extra="allow")
+
 class Location(BaseModel):
     fullAddress: str
     street: str
@@ -38,7 +46,7 @@ class Meter(BaseModel):
     location: Location
     type: str
     unit: str
-    model_config = {"populate_by_name": True}
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class MeterResponse(BaseModel):
@@ -49,4 +57,4 @@ class Reading(BaseModel):
     meterId: str = Field(alias="_meterId")
     kwh: float
     timestamp: datetime
-    model_config = {"populate_by_name": True}
+    model_config = ConfigDict(populate_by_name=True)

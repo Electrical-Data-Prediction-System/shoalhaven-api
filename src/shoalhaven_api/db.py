@@ -1,7 +1,8 @@
-import datetime
+
 import logging
-from datetime import UTC
+from datetime import UTC, date, datetime, time, timedelta
 from os import getenv
+from typing import Any, Literal
 
 from dotenv import load_dotenv
 from pymongo import MongoClient, UpdateOne
@@ -13,6 +14,16 @@ logger.setLevel(logging.DEBUG)
 
 load_dotenv()
 
+# Constants
+INTERVAL = Literal["5m", "week", "month", "year"]
+
+INTERVAL_CONFIG = {
+    "5m": {"unit": "minute", "binSize": 5},
+    "week": {"unit": "week", "binSize": 1},
+    "month": {"unit": "month", "binSize": 1},
+    "year": {"unit": "year", "binSize": 1},
+}
+
 
 # MongoDB client setup
 uri = getenv("MONGODB_CONNECTION_STRING")
@@ -23,6 +34,7 @@ db = client.get_database("demo") if environment == "dev" else client.get_databas
 meters = db.get_collection("meter")
 readings = db.get_collection("reading")
 
+# Testing
 
 def testPing() -> None:
     try:
@@ -31,6 +43,9 @@ def testPing() -> None:
     except Exception as e:
         print(e)
 
+
+
+# Meters
 
 def meterFindOne(query: dict) -> dict | None:
     result = meters.find_one(query)
@@ -46,33 +61,116 @@ def meterUpsert(query: dict, data: dict) -> None:
     meters.replace_one(query, data, upsert=True)
 
 
-def aggregateReadingsBetween(
-    startDate: datetime.datetime | datetime.date | None = None,
-    endDate: datetime.datetime | datetime.date | None = None,
-) -> dict:
-    query = {}
 
-    if endDate is None:
-        endDate = datetime.datetime.now(UTC)
+# Power
 
-    if startDate is None:
-        startDate = endDate - datetime.timedelta(days=365)
+def aggregateMeterPowerRows(
+    meter_ids: list[str] | str | None = None,
+    interval: INTERVAL | None = None,
+    startDate: datetime | date | None = None,
+    endDate: datetime | date | None = None,
+    raw: bool = False
+) -> list[dict[str, Any]]:
+    """Return one row per timestamp, with one column per meter."""
 
-    start = (
-        startDate
-        if isinstance(startDate, datetime.datetime)
-        else datetime.datetime.combine(startDate, datetime.time.min, UTC)
+    start, end = _date_range(startDate, endDate)
+
+    query: dict[str, Any] = {
+        "timestamp": {"$gte": start, "$lte": end}
+    }
+
+    if isinstance(meter_ids, str):
+        meter_ids = [meter_ids]
+
+    if meter_ids is not None:
+        query["_meterId"] = {"$in": meter_ids}
+
+    date_expression: Any = "$timestamp"
+
+    if not raw and interval is not None:
+        bucket = INTERVAL_CONFIG[interval]
+        date_expression = {
+            "$dateTrunc": {
+                "date": "$timestamp",
+                **bucket,
+                "timezone": "Australia/Sydney",
+            }
+        }
+
+    value_expression = (
+        {"$first": "$kwh"} if raw
+        else {"$sum": {"$round": ["$kwh", 5]}}
     )
-    end = (
-        endDate
-        if isinstance(endDate, datetime.datetime)
-        else datetime.datetime.combine(endDate, datetime.time.max, UTC)
-    )
-
-    query["timestamp"] = {"$gte": start, "$lte": end}
 
     pipeline = [
         {"$match": query},
+
+        # Combine readings for each meter and timestamp.
+        {
+            "$group": {
+                "_id": {
+                    "meterId": "$_meterId",
+                    "date": date_expression,
+                },
+                "kwh": value_expression,
+            } 
+        },
+
+        # Collect all meter readings for each timestamp.
+        {
+            "$group": {
+                "_id": "$_id.date",
+                "readings": {
+                    "$push": {
+                        "k": "$_id.meterId",
+                        "v": "$kwh",
+                    }
+                },
+            }
+        },
+
+        # Sort by timestamp
+        {"$sort": {"_id": 1}},
+
+        # Convert readings array into dictionary
+        {
+            "$project": {
+                "_id": 0,
+                "date": "$_id",
+                "kwh": {"$round": ["$kwh", 2]},
+                "readings": {"$arrayToObject": "$readings"},
+            }
+        },
+
+        # Return one flat row containing date and meter-ID fields.
+        {
+            "$replaceRoot": {
+                "newRoot": {
+                    "$mergeObjects": [
+                        {"date": "$date"},
+                        "$readings",
+                    ]
+                }
+            }
+        },
+
+    ]
+
+    return list(readings.aggregate(pipeline, allowDiskUse=True))
+
+
+
+# Readings
+
+def aggregateReadingsBetween(
+    startDate: datetime | date | None = None,
+    endDate: datetime | date | None = None,
+) -> dict[str, list[dict[str, Any]]]:
+    # -> list[dict[str | datetime, float]]: Optional
+    start, end = _date_range(startDate, endDate)
+
+    pipeline = [
+        {"$match": {"timestamp": {"$gte": start, "$lte": end}}},
         {
             "$group": {
                 "_id": {
@@ -88,29 +186,28 @@ def aggregateReadingsBetween(
         {"$sort": {"_id": 1}},
         {"$project": {"_id": 0, "x": "$_id", "y": "$KWH"}},
     ]
-    # results = list(readings.aggregate(pipeline))
-    #
-    # formatted = []
-    # formatted.append({"id": "power"})
-    # formatted.append({"data": results})
-    # return formatted
 
     points = list(readings.aggregate(pipeline))
-
     return {"series": [{"name": "KWH", "data": points}]}
+
+    # optional: flattend return points  
 
 
 def readingsGetBetween(
-    startDate: datetime.date,
-    endDate: datetime.datetime | datetime.date | None = None,
+    startDate: date | None = None,
+    endDate: datetime | date | None = None,
     meter_id: str | None = None,
 ) -> list[dict]:
     query = {}
 
     if endDate is None:
-        endDate = datetime.datetime.now(UTC)
+        endDate = datetime.now(UTC)
+
+    if startDate is None:
+        startDate = endDate - timedelta(days=30)
 
     query["timestamp"] = {"$gte": startDate, "$lte": endDate}
+    
     if meter_id:
         query["_meterId"] = meter_id
 
@@ -119,149 +216,13 @@ def readingsGetBetween(
     return list(results)
 
 
-def readingLatestTimestamp(meterId: str) -> datetime.datetime | None:
+def readingLatestTimestamp(meterId: str) -> datetime | None:
     result = readings.find_one(
         {"_meterId": meterId},
         {"_id": 0, "timestamp": 1},
         sort=[("timestamp", -1)],
     )
     return result["timestamp"] if result else None
-
-
-def aggregateMeterPowerBetween(
-    meterId: str | None = None,
-    startDate: datetime.date | None = None,
-    endDate: datetime.date | None = None,
-) -> dict:
-    query = {}
-
-    if meterId:
-        query["_meterId"] = meterId
-    if endDate is None:
-        endDate = datetime.datetime.now(UTC).date()
-    if startDate is None:
-        startDate = endDate - datetime.timedelta(days=365)
-
-    start = (
-        startDate
-        if isinstance(startDate, datetime.datetime)
-        else datetime.datetime.combine(startDate, datetime.time.min, UTC)
-    )
-    end = (
-        endDate
-        if isinstance(endDate, datetime.datetime)
-        else datetime.datetime.combine(endDate, datetime.time.max, UTC)
-    )
-
-    query["timestamp"] = {"$gte": start, "$lte": end}
-
-    pipeline = [
-        {"$match": query},
-        {"$group": {"_id": "$_meterId", "KWH": {"$sum": "$kwh"}}},
-        {"$project": {"_id": 0, "x": "$_id", "y": "$KWH"}},
-        {"$sort": {"x": 1}},
-    ]
-
-    # results = readings.aggregate(pipeline)
-    # return list(results)
-
-    points = list(readings.aggregate(pipeline))
-
-    return {"series": [{"name": "KWH", "data": points}]}
-
-
-def aggregateMeterPowerByInterval(
-    meterId: str,
-    interval: str,
-    startDate: datetime.datetime | None = None,
-    endDate: datetime.datetime | None = None,
-) -> dict:
-    interval_config = {
-        "5m": {"unit": "minute", "binSize": 5},
-        "week": {"unit": "week", "binSize": 1},
-        "month": {"unit": "month", "binSize": 1},
-        "year": {"unit": "year", "binSize": 1},
-    }
-    bucket = interval_config[interval]
-    query: dict = {"_meterId": meterId}
-
-    timestamp_filter = {}
-    if startDate is not None:
-        timestamp_filter["$gte"] = startDate
-    if endDate is not None:
-        timestamp_filter["$lte"] = endDate
-    if timestamp_filter:
-        query["timestamp"] = timestamp_filter
-
-    points = list(
-        readings.aggregate(
-            [
-                {"$match": query},
-                {
-                    "$group": {
-                        "_id": {
-                            "$dateTrunc": {
-                                "date": "$timestamp",
-                                **bucket,
-                                "timezone": "Australia/Sydney",
-                            }
-                        },
-                        "KWH": {"$sum": "$kwh"},
-                    }
-                },
-                {"$sort": {"_id": 1}},
-                {"$project": {"_id": 0, "x": "$_id", "y": "$KWH"}},
-            ]
-        )
-    )
-
-    return {"series": [{"name": "KWH", "data": points}]}
-
-
-def aggregateAllMeterPowerBetween(
-    startDate: datetime.date | None = None,
-    endDate: datetime.date | None = None,
-) -> dict:
-    query = {}
-
-    if endDate is None:
-        endDate = datetime.datetime.now(UTC).date()
-    if startDate is None:
-        startDate = endDate - datetime.timedelta(days=365)
-
-    start = (
-        startDate
-        if isinstance(startDate, datetime.datetime)
-        else datetime.datetime.combine(startDate, datetime.time.min, UTC)
-    )
-    end = (
-        endDate
-        if isinstance(endDate, datetime.datetime)
-        else datetime.datetime.combine(endDate, datetime.time.max, UTC)
-    )
-
-    logger.debug(str(startDate) + " : " + str(endDate))
-
-    query["timestamp"] = {"$gte": start, "$lte": end}
-
-    results = readings.aggregate(
-        [
-            {"$match": query},
-            {"$group": {"_id": "$_meterId", "KWH": {"$sum": "$kwh"}}},
-            {
-                "$project": {
-                    "_id": 0,
-                    "x": "$_id",
-                    "y": "$KWH",
-                }
-            },
-            {"$sort": {"x": 1}},
-        ]
-    )
-
-    points = list(results)
-
-    return {"series": [{"name": "KWH", "data": points}]}
 
 
 def readingInsertMany(data: list[dict]) -> tuple[int, int]:
@@ -283,3 +244,39 @@ def readingUpsertMany(data: list[dict]) -> tuple[int, int]:
     ]
     res = db.readings.bulk_write(ops, ordered=False)
     return res.upserted_count, len(data) - res.upserted_count
+
+
+
+# Helper Functions
+
+def _to_datetime(value: datetime | date, *, end_of_day: bool = False) -> datetime:
+    """Convert dates and datetimes into timezone-aware UTC datetimes."""
+
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
+
+    boundary: time = time.max if end_of_day else time.min
+    return datetime.combine(value, boundary, tzinfo=UTC)
+
+
+def _date_range(start: datetime | date | None, end: datetime | date | None) -> tuple[datetime, datetime]:
+    """Apply the default one-year range and normalize its boundaries."""
+
+    end_dt = _to_datetime(end) if end is not None else datetime.now(UTC)
+
+    start_dt = (
+        _to_datetime(start)
+        if start is not None
+        else end_dt - timedelta(days=365)
+    )
+
+    # A date-only end means the end of that calendar day.
+    if end is not None and isinstance(end, date) and not isinstance(end, datetime):
+        end_dt = _to_datetime(end, end_of_day=True)
+
+    if end_dt <= start_dt:
+        raise ValueError("Start date must be before end date")
+
+    return start_dt, end_dt

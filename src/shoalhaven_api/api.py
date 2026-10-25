@@ -1,13 +1,21 @@
 from datetime import UTC, datetime, timedelta
 import re
-from typing import Literal
+from typing import Literal, Any, Tuple
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 import shoalhaven_api.db as db
 from shoalhaven_api.geocoding import geocodeLocationString
-from shoalhaven_api.schemas import ChartResponse, Meter, MeterResponse, Reading
+from shoalhaven_api.schemas import (
+    ChartPoint,
+    ChartResponse,
+    ChartSeries, 
+    Meter,
+    MeterPowerRow,
+    MeterResponse, 
+    Reading,
+)
 
 app = FastAPI()
 
@@ -22,6 +30,8 @@ app.add_middleware(
 async def root():
     return {"message": "Hello World"}
 
+
+# Meters
 
 @app.get("/meters", response_model=list[Meter])
 def search_meters(location: str = Query(min_length=2, max_length=100)) -> list[Meter]:
@@ -57,41 +67,62 @@ def get_meter(meter_id: str) -> MeterResponse:
         raise HTTPException(status_code=404, detail="No meters found")
 
 
-@app.get("/meters/power/aggregate-power", response_model=ChartResponse)
+# Power
+
+@app.get("/meters/power/aggregate-power", response_model=list[MeterPowerRow])
 def getAllAggregatedMeterPower(
-    start: datetime | None = None, end: datetime | None = None
-) -> ChartResponse:
-    results = db.aggregateAllMeterPowerBetween(start, end)
+    meterIds: list[str] | None = Query(default=None),
+    start: datetime | None = None, 
+    end: datetime | None = None,
+    interval: db.INTERVAL | None = None,
+) -> list[dict[str, Any]]:
+    
+    validate_meter_ids(meterIds)
+    start, end = validate_date_range(start, end, 365)
 
-    return ChartResponse.model_validate(results)
+    return db.aggregateMeterPowerRows(meterIds, interval, start, end)
 
+@app.get("/meters/power/raw-power", response_model=list[MeterPowerRow])
+def getRawMeterPower(
+    meterIds: list[str] | None = Query(default=None),
+    start: datetime | None = None,
+    end: datetime | None = None
+) -> list[dict[str, Any]]:
 
+    validate_meter_ids(meterIds)
+    start, end = validate_date_range(start, end, 1)
+
+    return db.aggregateMeterPowerRows(meterIds, startDate=start, endDate=end, raw=True)
+    
+
+# for compatability reasons
 @app.get("/meters/{meter_id}/aggregate-power", response_model=ChartResponse)
 def getAggregatedMeterPower(
     meter_id: str,
     start: datetime | None = None,
     end: datetime | None = None,
-    interval: Literal["5m", "week", "month", "year"] | None = None,
+    interval: db.INTERVAL | None = None,
 ) -> ChartResponse:
-    if interval is not None:
-        results = db.aggregateMeterPowerByInterval(meter_id, interval, start, end)
-    else:
-        results = db.aggregateMeterPowerBetween(meter_id, start, end)
+    
+    start, end = validate_date_range(start, end, 30)
 
-    return ChartResponse.model_validate(results)
+    rows = db.aggregateMeterPowerRows(meter_id, interval, start, end)
+    
+    points = [
+        ChartPoint(x=row["date"], y=row[meter_id])
+        for row in rows
+    ]
 
+    return ChartResponse(
+        series=[ChartSeries(name="KWH", data=points)]
+    )
+
+
+# Readings
 
 @app.get("/meters/{meter_id}/readings/latest")
 def getLatestMeterReading(meter_id: str) -> dict[str, datetime | None]:
     return {"timestamp": db.readingLatestTimestamp(meter_id)}
-
-
-@app.get("/locations/geocode/{query}")
-def formatLocation(query: str) -> dict:
-    location = geocodeLocationString(query)
-
-    return location.to_dict()
-
 
 # Dates are formated in ISO: 2026-08-03 05:34:37.967019
 @app.get("/meters/{meter_id}/readings", response_model=list[Reading])
@@ -100,33 +131,62 @@ def getReadingsBetween(
     start: datetime,
     end: datetime | None = None,
 ) -> list[Reading]:
-    if not end:
-        end = datetime.now(UTC)
-    if end <= start:
-        raise HTTPException(
-            status_code=400, detail="Start date cannot be ahead of end date"
-        )
+    start, end = validate_date_range(start, end)
 
     results = db.readingsGetBetween(start, end, meter_id)
-
     return [Reading.model_validate(r) for r in results]
 
 
 # Dates are formated in ISO: 2026-08-03 05:34:37.967019
 @app.get("/readings/aggregate", response_model=ChartResponse)
 def sumReadingsBetween(
-    start: datetime | None = None, end: datetime | None = None
+    start: datetime | None = None, 
+    end: datetime | None = None
 ) -> ChartResponse:
-    if not end:
-        end = datetime.now(UTC)
-    if start is None:
-        start = end - timedelta(days=365)
-
-    if end <= start:
-        raise HTTPException(
-            status_code=400, detail="Start date cannot be ahead of end date"
-        )
+    start, end = validate_date_range(start, end)
+    
 
     results = db.aggregateReadingsBetween(start, end)
-
     return ChartResponse.model_validate(results)
+
+    # this is what i would do but we are too far down the rabbit hole now
+    # return [ChartPoint.model_validate(point) for point in results]
+
+
+# locations
+
+@app.get("/locations/geocode/{query}")
+def formatLocation(query: str) -> dict:
+    location = geocodeLocationString(query)
+
+    return location.to_dict()
+
+
+# Helper Functions
+
+def validate_date_range(
+        start: datetime | None, 
+        end: datetime | None, 
+        days: int = 365
+) -> tuple[datetime, datetime]:
+    if start is not None and end is not None and end <= start:
+        raise HTTPException(
+            status_code=400,
+            detail="Start date must be before end date",
+        )
+
+    if end is None:
+            end = datetime.now(UTC)
+
+    if start is None:
+            start = end - timedelta(days=days)
+
+    return start, end
+
+def validate_meter_ids(meter_ids: str | list[str] | None = Query(default=None)):
+    if meter_ids is not None and not meter_ids:
+        raise HTTPException(
+            status_code=400, 
+            detail="meterIds cannot be an empty list",
+        )
+        

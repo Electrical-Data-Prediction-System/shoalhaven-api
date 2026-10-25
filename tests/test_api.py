@@ -1,3 +1,5 @@
+from datetime import UTC, datetime, timedelta
+
 from fastapi.testclient import TestClient
 
 import shoalhaven_api.api as api_module
@@ -68,6 +70,29 @@ def test_meter_aggregate_rejects_unknown_interval():
     response = client.get("/meters/meter-1/aggregate-power", params={"interval": "quarter"})
 
     assert response.status_code == 422
+
+
+def test_all_meter_aggregate_defaults_to_one_year(monkeypatch):
+    captured = {}
+
+    def aggregate_meter_power_rows(meter_ids, interval, start, end):
+        captured.update(meter_ids=meter_ids, interval=interval, start=start, end=end)
+        return []
+
+    monkeypatch.setattr(api_module.db, "aggregateMeterPowerRows", aggregate_meter_power_rows)
+
+    before_request = datetime.now(UTC)
+    response = client.get(
+        "/meters/power/aggregate-power",
+        params={"interval": "month", "meterIds": "meter-1"},
+    )
+    after_request = datetime.now(UTC)
+
+    assert response.status_code == 200
+    assert captured["interval"] == "month"
+    assert captured["meter_ids"] == ["meter-1"]
+    assert timedelta(days=365) <= captured["end"] - captured["start"] <= timedelta(days=365, seconds=1)
+    assert before_request <= captured["end"] <= after_request
 
 
 def test_readings_rejects_end_before_start():
