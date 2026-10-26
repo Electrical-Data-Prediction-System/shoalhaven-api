@@ -72,27 +72,27 @@ def test_meter_aggregate_rejects_unknown_interval():
     assert response.status_code == 422
 
 
-def test_all_meter_aggregate_defaults_to_one_year(monkeypatch):
+def test_all_meter_aggregate_defaults_to_year_before_latest_reading(monkeypatch):
     captured = {}
+    latest = datetime(2026, 1, 1, tzinfo=UTC)
 
     def aggregate_meter_power_rows(meter_ids, interval, start, end):
         captured.update(meter_ids=meter_ids, interval=interval, start=start, end=end)
         return []
 
     monkeypatch.setattr(api_module.db, "aggregateMeterPowerRows", aggregate_meter_power_rows)
+    monkeypatch.setattr(api_module.db, "readingLatestTimestamp", lambda meter_id=None: latest)
 
-    before_request = datetime.now(UTC)
     response = client.get(
         "/meters/power/aggregate-power",
         params={"interval": "month", "meterIds": "meter-1"},
     )
-    after_request = datetime.now(UTC)
 
     assert response.status_code == 200
     assert captured["interval"] == "month"
     assert captured["meter_ids"] == ["meter-1"]
-    assert timedelta(days=365) <= captured["end"] - captured["start"] <= timedelta(days=365, seconds=1)
-    assert before_request <= captured["end"] <= after_request
+    assert captured["end"] == latest
+    assert captured["end"] - captured["start"] == timedelta(days=365)
 
 
 def test_readings_rejects_end_before_start():
@@ -103,3 +103,80 @@ def test_readings_rejects_end_before_start():
 
     assert response.status_code == 400
     assert response.json()["detail"] == "Start date cannot be ahead of end date"
+
+
+def test_meter_forecast_returns_saved_forecast(monkeypatch):
+    saved = {
+        "_id": "meter-1:day",
+        "meterId": "meter-1",
+        "granularity": "day",
+        "model": "timestral-5M",
+        "generatedAt": datetime(2026, 10, 1, tzinfo=UTC),
+        "anchor": datetime(2026, 9, 30, tzinfo=UTC),
+        "points": [{"x": datetime(2026, 9, 30, tzinfo=UTC), "p10": 1.0, "p50": 2.0, "p90": 3.0}],
+        "backtest": None,
+    }
+    captured = {}
+
+    def find_one(meter_id, granularity):
+        captured.update(meter_id=meter_id, granularity=granularity)
+        return saved
+
+    monkeypatch.setattr(api_module.db, "forecastFindOne", find_one)
+
+    response = client.get("/meters/meter-1/forecast", params={"granularity": "day"})
+
+    assert response.status_code == 200
+    assert captured == {"meter_id": "meter-1", "granularity": "day"}
+    assert response.json()["points"][0]["p50"] == 2.0
+
+
+def test_meter_forecast_missing_returns_404(monkeypatch):
+    monkeypatch.setattr(api_module.db, "forecastFindOne", lambda *args: None)
+
+    response = client.get("/meters/meter-1/forecast", params={"granularity": "hour"})
+
+    assert response.status_code == 404
+
+
+def test_meter_totals_default_to_year_before_latest_reading(monkeypatch):
+    latest = datetime(2026, 3, 1, tzinfo=UTC)
+    captured = {}
+
+    def aggregate_meter_totals(meter_ids, start, end):
+        captured.update(meter_ids=meter_ids, start=start, end=end)
+        return [{"name": "meter-1", "KWH": 42.5}]
+
+    monkeypatch.setattr(api_module.db, "readingLatestTimestamp", lambda meter_id=None: latest)
+    monkeypatch.setattr(api_module.db, "aggregateMeterTotals", aggregate_meter_totals)
+
+    response = client.get("/meters/power/totals")
+
+    assert response.status_code == 200
+    assert response.json() == [{"name": "meter-1", "KWH": 42.5}]
+    assert captured["end"] == latest
+    assert captured["start"] == latest - timedelta(days=365)
+
+
+def test_meter_map_joins_totals_and_flags_meters_outside_shoalhaven(monkeypatch):
+    def meter(meter_id, coordinates):
+        return {
+            "_id": meter_id,
+            "type": "Water Pump Station",
+            "location": {"fullAddress": f"{meter_id} Street", "place": "Nowra", "coordinates": coordinates},
+            "unit": "kWh",
+        }
+
+    monkeypatch.setattr(api_module.db, "readingLatestTimestamp", lambda meter_id=None: datetime(2026, 1, 1, tzinfo=UTC))
+    monkeypatch.setattr(api_module.db, "aggregateMeterTotals", lambda *args: [{"name": "nowra", "KWH": 1200.5}])
+    monkeypatch.setattr(api_module.db, "meterFindAll", lambda query: [
+        meter("nowra", [150.6, -34.87]),
+        meter("forbes", [148.0, -33.37]),
+    ])
+
+    response = client.get("/meters/map")
+
+    assert response.status_code == 200
+    nowra, forbes = response.json()
+    assert nowra["totalKwh"] == 1200.5 and nowra["inShoalhaven"] is True
+    assert forbes["totalKwh"] is None and forbes["inShoalhaven"] is False
