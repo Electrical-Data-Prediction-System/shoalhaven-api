@@ -68,6 +68,7 @@ Dates are formatted in ISO when querying, e.g. `2026-08-03 05:35:00`.
 | `GET /meters?location=` | Searches meters by address, street, postcode, suburb, region, or country |
 | `GET /meters/power/summary` | All meters for the latest full month and the month before: total kWh, busiest day, and wholesale cost (each half hour's kWh x NSW spot price from the `market` cache) |
 | `GET /meters/map?start=&end=` | Every meter with its address, coordinates, total kWh (default: the year before the latest reading, `null` if no readings) and `inShoalhaven` (false when geocoded outside the Shoalhaven) |
+| `GET /meters/daily-usage?meterIds=&start=&end=` | Each meter's total kWh per local day (default: the year before the latest reading, complete days only). Used by the dashboard's usage alerts |
 | `GET /meters/{meter_id}` | Returns a single meter object by ID |
 | `GET /meters/{meter_id}/aggregate-power?start=&end=&interval=` | Sums KWH per meter, optionally grouped by `5m`, `hour`, `day`, `week`, `month`, or `year` buckets |
 | `GET /meters/{meter_id}/forecast?granularity=` | Saved `hour` or `day` forecast (p10/p50/p90 points and backtest scores), 404 if none has been generated |

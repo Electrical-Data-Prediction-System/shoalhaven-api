@@ -12,6 +12,7 @@ from shoalhaven_api.schemas import (
     ChartPoint,
     ChartResponse,
     ChartSeries, 
+    DailyUsage,
     ForecastResponse,
     MarketProfileRow,
     MarketRow,
@@ -97,6 +98,26 @@ def getMeterMap(
                 and SHOALHAVEN_BOUNDS["south"] <= lat <= SHOALHAVEN_BOUNDS["north"],
         })
     return points
+
+
+# Declared before /meters/{meter_id}, otherwise "daily-usage" would be read as a meter id
+@app.get("/meters/daily-usage", response_model=list[DailyUsage])
+def getDailyUsage(
+    meterIds: list[str] = Query(min_length=1, max_length=100),
+    start: datetime | None = None,
+    end: datetime | None = None,
+) -> list[dict[str, Any]]:
+    """Each meter's kWh per local day, for alert limits. Defaults to the year before the latest reading"""
+    if end is None:
+        # Stop at the start of the latest reading's day, unless that day's last half hour is in,
+        # so a partly-read final day doesn't look like a sudden drop in usage
+        latest = latest_reading_end(meterIds)
+        end = latest.replace(hour=0, minute=0, second=0, microsecond=0)
+        if (latest.hour, latest.minute) >= (23, 30):
+            end += timedelta(days=1)
+    start, end = validate_date_range(start, end, 365)
+
+    return db.meterDailyTotals(meterIds, start, end)
 
 
 @app.get("/meters/{meter_id}", response_model=MeterResponse)
