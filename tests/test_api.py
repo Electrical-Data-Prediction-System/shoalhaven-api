@@ -156,3 +156,27 @@ def test_meter_totals_default_to_year_before_latest_reading(monkeypatch):
     assert response.json() == [{"name": "meter-1", "KWH": 42.5}]
     assert captured["end"] == latest
     assert captured["start"] == latest - timedelta(days=365)
+
+
+def test_meter_map_joins_totals_and_flags_meters_outside_shoalhaven(monkeypatch):
+    def meter(meter_id, coordinates):
+        return {
+            "_id": meter_id,
+            "type": "Water Pump Station",
+            "location": {"fullAddress": f"{meter_id} Street", "place": "Nowra", "coordinates": coordinates},
+            "unit": "kWh",
+        }
+
+    monkeypatch.setattr(api_module.db, "readingLatestTimestamp", lambda meter_id=None: datetime(2026, 1, 1, tzinfo=UTC))
+    monkeypatch.setattr(api_module.db, "aggregateMeterTotals", lambda *args: [{"name": "nowra", "KWH": 1200.5}])
+    monkeypatch.setattr(api_module.db, "meterFindAll", lambda query: [
+        meter("nowra", [150.6, -34.87]),
+        meter("forbes", [148.0, -33.37]),
+    ])
+
+    response = client.get("/meters/map")
+
+    assert response.status_code == 200
+    nowra, forbes = response.json()
+    assert nowra["totalKwh"] == 1200.5 and nowra["inShoalhaven"] is True
+    assert forbes["totalKwh"] is None and forbes["inShoalhaven"] is False

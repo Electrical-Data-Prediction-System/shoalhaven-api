@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 import shoalhaven_api.db as db
-from shoalhaven_api import market
+from shoalhaven_api import market, summary
 from shoalhaven_api.geocoding import geocodeLocationString
 from shoalhaven_api.schemas import (
     ChartPoint,
@@ -18,8 +18,10 @@ from shoalhaven_api.schemas import (
     MarketStats,
     Meter,
     MeterPowerRow,
+    MeterMapPoint,
     MeterResponse, 
     MeterTotal,
+    PowerSummary,
     Reading,
 )
 
@@ -27,6 +29,9 @@ app = FastAPI()
 
 # How far back a single meter's chart looks by default, per bucket size
 DEFAULT_RANGE_DAYS = {"5m": 1, "hour": 7, "day": 90, "week": 365, "month": 365, "year": 365}
+
+# Rough box around the Shoalhaven LGA. Meters outside it were geocoded to the wrong town
+SHOALHAVEN_BOUNDS = {"west": 150.2, "east": 151.0, "south": -35.8, "north": -34.6}
 
 app.add_middleware(
     CORSMiddleware,
@@ -64,6 +69,36 @@ def search_meters(location: str = Query(min_length=2, max_length=100)) -> list[M
         })
         for meter in meters
     ]
+
+
+# Declared before /meters/{meter_id}, otherwise "map" would be read as a meter id
+@app.get("/meters/map", response_model=list[MeterMapPoint])
+def getMeterMap(
+    start: datetime | None = None,
+    end: datetime | None = None,
+) -> list[dict[str, Any]]:
+    # Same default as the totals route: the year before the latest reading
+    if end is None:
+        end = db.readingLatestTimestamp()
+    start, end = validate_date_range(start, end, 365)
+
+    totals = {row["name"]: row["KWH"] for row in db.aggregateMeterTotals(None, start, end)}
+
+    points = []
+    for meter in db.meterFindAll({}):
+        location = meter["location"]
+        lon, lat = location["coordinates"]
+        points.append({
+            "id": str(meter["_id"]),
+            "type": meter["type"],
+            "fullAddress": location["fullAddress"],
+            "place": location["place"],
+            "coordinates": (lon, lat),
+            "totalKwh": totals.get(meter["_id"]),
+            "inShoalhaven": SHOALHAVEN_BOUNDS["west"] <= lon <= SHOALHAVEN_BOUNDS["east"]
+                and SHOALHAVEN_BOUNDS["south"] <= lat <= SHOALHAVEN_BOUNDS["north"],
+        })
+    return points
 
 
 @app.get("/meters/{meter_id}", response_model=MeterResponse)
@@ -105,6 +140,27 @@ def getMeterTotals(
     start, end = validate_date_range(start, end, 365)
 
     return db.aggregateMeterTotals(meterIds, start, end)
+
+@app.get("/meters/power/summary", response_model=PowerSummary)
+def getPowerSummary() -> dict[str, Any]:
+    """All meters for the latest full month and the month before, for the dashboard's stat cards"""
+    latest = db.readingLatestTimestamp()
+    if latest is None:
+        raise HTTPException(status_code=404, detail="No readings found")
+
+    month = summary.latest_full_month(latest)
+    previous = summary.previous_month(month)
+    end = summary.next_month(month)
+
+    rows = db.readingTotalsByTimestamp(previous, end)
+    # A day either side covers the shift between Sydney time and UTC
+    price_rows = db.marketFind(["price"], previous - timedelta(days=1), end + timedelta(days=1))
+    prices = {row["timestamp"]: row["value"] for row in price_rows}
+
+    return {
+        "current": summary.month_summary(rows, prices, month),
+        "previous": summary.month_summary(rows, prices, previous),
+    }
 
 @app.get("/meters/power/raw-power", response_model=list[MeterPowerRow])
 def getRawMeterPower(

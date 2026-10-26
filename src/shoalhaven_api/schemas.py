@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -54,6 +54,18 @@ class Meter(BaseModel):
     type: str
     unit: str
     model_config = ConfigDict(populate_by_name=True)
+
+
+class MeterMapPoint(BaseModel):
+    """One meter as a map marker, with its total usage over the chosen range"""
+
+    id: str
+    type: str
+    fullAddress: str
+    place: str
+    coordinates: tuple[float, float]
+    totalKwh: float | None
+    inShoalhaven: bool
 
 
 class MeterResponse(BaseModel):
@@ -124,3 +136,25 @@ class MarketStats(BaseModel):
     negativeShare: float | None
     middayAverage: float | None
     eveningAverage: float | None
+
+
+class BusiestDay(BaseModel):
+    date: date
+    kwh: float
+
+
+class MonthSummary(BaseModel):
+    """All meters added together for one month"""
+
+    month: datetime
+    totalKwh: float
+    busiestDay: BusiestDay | None
+    # Each half hour's kWh x that half hour's NSW spot price, in AUD. None without market data
+    wholesaleCost: float | None
+    # Share of the month's kWh that had a matching spot price (1.0 = fully priced)
+    pricedShare: float
+
+
+class PowerSummary(BaseModel):
+    current: MonthSummary
+    previous: MonthSummary

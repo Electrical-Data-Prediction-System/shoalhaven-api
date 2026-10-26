@@ -256,6 +256,16 @@ def readingLatestTimestamp(meterId: str | None = None) -> datetime | None:
     return result["timestamp"] if result else None
 
 
+def readingTotalsByTimestamp(start: datetime, end: datetime) -> list[dict[str, Any]]:
+    """Total kWh across all meters for each reading time, oldest first: [{timestamp, kwh}]"""
+    return list(readings.aggregate([
+        {"$match": {"timestamp": {"$gte": start, "$lt": end}}},
+        {"$group": {"_id": "$timestamp", "kwh": {"$sum": "$kwh"}}},
+        {"$sort": {"_id": 1}},
+        {"$project": {"_id": 0, "timestamp": "$_id", "kwh": 1}},
+    ], allowDiskUse=True))
+
+
 def readingInsertMany(data: list[dict]) -> tuple[int, int]:
     try:
         res = readings.insert_many(data, ordered=False)

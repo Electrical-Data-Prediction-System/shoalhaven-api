@@ -66,6 +66,8 @@ Dates are formatted in ISO when querying, e.g. `2026-08-03 05:35:00`.
 | --- | --- |
 | `GET /` | Health check |
 | `GET /meters?location=` | Searches meters by address, street, postcode, suburb, region, or country |
+| `GET /meters/power/summary` | All meters for the latest full month and the month before: total kWh, busiest day, and wholesale cost (each half hour's kWh x NSW spot price from the `market` cache) |
+| `GET /meters/map?start=&end=` | Every meter with its address, coordinates, total kWh (default: the year before the latest reading, `null` if no readings) and `inShoalhaven` (false when geocoded outside the Shoalhaven) |
 | `GET /meters/{meter_id}` | Returns a single meter object by ID |
 | `GET /meters/{meter_id}/aggregate-power?start=&end=&interval=` | Sums KWH per meter, optionally grouped by `5m`, `hour`, `day`, `week`, `month`, or `year` buckets |
 | `GET /meters/{meter_id}/forecast?granularity=` | Saved `hour` or `day` forecast (p10/p50/p90 points and backtest scores), 404 if none has been generated |
@@ -96,6 +98,7 @@ src/shoalhaven_api/
 ├── meter.py      # Meter model + CSV ingestion
 ├── reading.py    # Reading model + fast pandas CSV ingestion
 ├── forecast.py   # Timestral + baseline forecasting and backtests
+├── summary.py    # Monthly totals, busiest day and wholesale cost for the stat cards
 ├── market.py     # OpenElectricity fetching + price summary
 ├── location.py   # Location model
 └── geocoding.py  # MapBox geocoding integration
