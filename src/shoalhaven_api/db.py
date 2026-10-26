@@ -36,6 +36,10 @@ db = client.get_database("demo") if environment == "dev" else client.get_databas
 meters = db.get_collection("meter")
 readings = db.get_collection("reading")
 forecasts = db.get_collection("forecast")
+market = db.get_collection("market")
+
+# The NEM runs on Australian Eastern Standard Time all year, with no daylight saving
+NEM_TIMEZONE = "+10:00"
 
 # Testing
 
@@ -285,7 +289,91 @@ def forecastFindOne(meterId: str, granularity: str) -> dict | None:
 
 
 
+# Market
+
+def marketUpsertMany(docs: list[dict]) -> None:
+    if not docs:
+        return
+
+    market.create_index([("series", 1), ("timestamp", 1)], unique=True)
+    ops = [
+        UpdateOne(
+            {"series": d["series"], "timestamp": d["timestamp"]},
+            {"$set": d},
+            upsert=True,
+        )
+        for d in docs
+    ]
+    market.bulk_write(ops, ordered=False)
+
+
+def marketRange(series: str = "price") -> tuple[datetime, datetime] | None:
+    """First and last cached timestamp for a series"""
+    first = market.find_one({"series": series}, {"timestamp": 1}, sort=[("timestamp", 1)])
+    last = market.find_one({"series": series}, {"timestamp": 1}, sort=[("timestamp", -1)])
+    if not first or not last:
+        return None
+    return first["timestamp"], last["timestamp"]
+
+
+def marketFind(
+    series: list[str],
+    start: datetime,
+    end: datetime,
+    months: list[int] | None = None,
+) -> list[dict]:
+    """Raw cached rows, oldest first"""
+    return list(market.find(_marketMatch(series, start, end, months), {"_id": 0}).sort("timestamp", 1))
+
+
+def marketSeriesRows(
+    series: list[str],
+    start: datetime,
+    end: datetime,
+    interval: Literal["30m", "day", "month"] = "day",
+    months: list[int] | None = None,
+) -> list[dict[str, Any]]:
+    """One row per bucket with one averaged column per series, e.g. {date, price, solar_rooftop}"""
+    date_expression: Any = "$timestamp"
+    if interval != "30m":
+        date_expression = {"$dateTrunc": {"date": "$timestamp", "unit": interval, "timezone": NEM_TIMEZONE}}
+
+    return list(market.aggregate([
+        {"$match": _marketMatch(series, start, end, months)},
+        {"$group": {"_id": {"date": date_expression, "series": "$series"}, "value": {"$avg": "$value"}}},
+        {"$group": {"_id": "$_id.date", "values": {"$push": {"k": "$_id.series", "v": {"$round": ["$value", 3]}}}}},
+        {"$sort": {"_id": 1}},
+        {"$replaceRoot": {"newRoot": {"$mergeObjects": [{"date": "$_id"}, {"$arrayToObject": "$values"}]}}},
+    ]))
+
+
+def marketDailyProfile(
+    series: list[str],
+    start: datetime,
+    end: datetime,
+    months: list[int] | None = None,
+) -> list[dict[str, Any]]:
+    """Average of each series for every half hour of the day, e.g. {time: "12:30", price, solar_rooftop}"""
+    time_of_day = {"$dateToString": {"date": "$timestamp", "format": "%H:%M", "timezone": NEM_TIMEZONE}}
+
+    return list(market.aggregate([
+        {"$match": _marketMatch(series, start, end, months)},
+        {"$group": {"_id": {"time": time_of_day, "series": "$series"}, "value": {"$avg": "$value"}}},
+        {"$group": {"_id": "$_id.time", "values": {"$push": {"k": "$_id.series", "v": {"$round": ["$value", 3]}}}}},
+        {"$sort": {"_id": 1}},
+        {"$replaceRoot": {"newRoot": {"$mergeObjects": [{"time": "$_id"}, {"$arrayToObject": "$values"}]}}},
+    ]))
+
+
+
 # Helper Functions
+
+def _marketMatch(series: list[str], start: datetime, end: datetime, months: list[int] | None) -> dict:
+    query: dict[str, Any] = {"series": {"$in": series}, "timestamp": {"$gte": start, "$lte": end}}
+    if months:
+        query["$expr"] = {"$in": [{"$month": {"date": "$timestamp", "timezone": NEM_TIMEZONE}}, months]}
+    return query
+
 
 def _to_datetime(value: datetime | date, *, end_of_day: bool = False) -> datetime:
     """Convert dates and datetimes into timezone-aware UTC datetimes."""

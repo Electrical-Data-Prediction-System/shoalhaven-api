@@ -38,6 +38,7 @@ APP_ENV="dev"                           # specifies which database should be sel
 | `uv run shoalhaven pushReadings [file] [granularity]` | Drops and repopulates readings from CSV. `granularity` in minutes: `60` hourly, `240` 4-hourly, `1440` daily (default `60`) |
 | `uv run shoalhaven ping` | Tests connectivity to the MongoDB instance |
 | `uv run shoalhaven serve [host=0.0.0.0] [port=8000]` | Starts the FastAPI dev server |
+| `uv run shoalhaven pushMarket [--start 2025-01-01] [--end 2026-01-01] [--series price]` | Fetches NSW price, demand, rooftop/utility solar and Gullen Range solar (30 min) from OpenElectricity into the `market` collection. Needs `OPENELECTRICITY_API_KEY` |
 | `uv run --group forecast shoalhaven forecast [--granularity both] [--size 5M] [--meter-id ID]` | Forecasts usage with Timestral and saves it to MongoDB (see Forecasting) |
 
 ### Warning
@@ -53,6 +54,11 @@ Forecasts are made ahead of time from the CLI and saved to the `forecast` collec
 
 Re-run the command whenever new readings are loaded.
 
+## Market data
+NSW electricity market data comes from [OpenElectricity](https://openelectricity.org.au) (free key, data licensed CC BY-NC 4.0, attribute it wherever it's shown). It's fetched once with `pushMarket` and cached, so the dashboard never calls OpenElectricity directly. The free tier only reaches back 2 years, so keep the cache.
+
+Times are grouped in NEM time (UTC+10 all year, no daylight saving), which is how the market itself runs.
+
 ## API Routes
 Dates are formatted in ISO when querying, e.g. `2026-08-03 05:35:00`.
 
@@ -64,6 +70,9 @@ Dates are formatted in ISO when querying, e.g. `2026-08-03 05:35:00`.
 | `GET /meters/{meter_id}/aggregate-power?start=&end=&interval=` | Sums KWH per meter, optionally grouped by `5m`, `hour`, `day`, `week`, `month`, or `year` buckets |
 | `GET /meters/{meter_id}/forecast?granularity=` | Saved `hour` or `day` forecast (p10/p50/p90 points and backtest scores), 404 if none has been generated |
 | `GET /meters/power/aggregate-power?start=&end=` | Sums KWH for all meters between dates |
+| `GET /market/series?series=&interval=&months=` | Cached market series averaged per `30m`, `day` or `month` (series: `price`, `demand`, `solar_rooftop`, `solar_utility`, `gullen_solar`) |
+| `GET /market/daily-profile?series=&months=` | Average of each series for every half hour of the day (the "duck curve") |
+| `GET /market/stats?months=` | Spot price summary: average, max, min, % negative, midday vs evening averages |
 | `GET /locations/geocode/{query}` | Geocodes a location string into structured data |
 | `GET /meters/{meter_id}/readings?start=&end=` | Raw readings between two dates, optionally filtered by meter |
 | `GET /meters/{meter_id}/readings/latest` | Timestamp of the latest reading for a meter |
@@ -87,6 +96,7 @@ src/shoalhaven_api/
 ├── meter.py      # Meter model + CSV ingestion
 ├── reading.py    # Reading model + fast pandas CSV ingestion
 ├── forecast.py   # Timestral + baseline forecasting and backtests
+├── market.py     # OpenElectricity fetching + price summary
 ├── location.py   # Location model
 └── geocoding.py  # MapBox geocoding integration
 ```

@@ -92,3 +92,35 @@ class ForecastResponse(BaseModel):
     anchor: datetime
     points: list[ForecastPoint]
     backtest: ForecastBacktest | None = None
+
+
+class MarketRow(BaseModel):
+    """One time bucket with a numeric field per market series, e.g. price, solar_rooftop"""
+
+    date: datetime
+
+    __pydantic_extra__: dict[str, float] = Field(init=False)
+    model_config = ConfigDict(extra="allow")
+
+
+class MarketProfileRow(BaseModel):
+    """Average market values for one half hour of the day, e.g. time "12:30" """
+
+    time: str
+
+    __pydantic_extra__: dict[str, float] = Field(init=False)
+    model_config = ConfigDict(extra="allow")
+
+
+class MarketStats(BaseModel):
+    """NSW spot price summary in $/MWh"""
+
+    start: datetime
+    end: datetime
+    count: int
+    average: float | None
+    max: float | None
+    min: float | None
+    negativeShare: float | None
+    middayAverage: float | None
+    eveningAverage: float | None

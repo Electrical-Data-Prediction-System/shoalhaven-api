@@ -6,12 +6,16 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 import shoalhaven_api.db as db
+from shoalhaven_api import market
 from shoalhaven_api.geocoding import geocodeLocationString
 from shoalhaven_api.schemas import (
     ChartPoint,
     ChartResponse,
     ChartSeries, 
     ForecastResponse,
+    MarketProfileRow,
+    MarketRow,
+    MarketStats,
     Meter,
     MeterPowerRow,
     MeterResponse, 
@@ -191,6 +195,42 @@ def sumReadingsBetween(
     # return [ChartPoint.model_validate(point) for point in results]
 
 
+# Market (cached OpenElectricity data, NSW region)
+
+@app.get("/market/series", response_model=list[MarketRow])
+def getMarketSeries(
+    series: list[market.SERIES] = Query(default=["price"]),
+    start: datetime | None = None,
+    end: datetime | None = None,
+    interval: Literal["30m", "day", "month"] = "day",
+    months: list[int] | None = Query(default=None),
+) -> list[dict[str, Any]]:
+    start, end = market_date_range(start, end)
+    return db.marketSeriesRows(series, start, end, interval, months)
+
+
+@app.get("/market/daily-profile", response_model=list[MarketProfileRow])
+def getMarketDailyProfile(
+    series: list[market.SERIES] = Query(default=["price", "solar_rooftop", "solar_utility"]),
+    start: datetime | None = None,
+    end: datetime | None = None,
+    months: list[int] | None = Query(default=None),
+) -> list[dict[str, Any]]:
+    start, end = market_date_range(start, end)
+    return db.marketDailyProfile(series, start, end, months)
+
+
+@app.get("/market/stats", response_model=MarketStats)
+def getMarketStats(
+    start: datetime | None = None,
+    end: datetime | None = None,
+    months: list[int] | None = Query(default=None),
+) -> dict[str, Any]:
+    start, end = market_date_range(start, end)
+    rows = db.marketFind(["price"], start, end, months)
+    return {"start": start, "end": end, **market.price_stats(rows)}
+
+
 # locations
 
 @app.get("/locations/geocode/{query}")
@@ -218,6 +258,20 @@ def validate_date_range(
 
     if start is None:
             start = end - timedelta(days=days)
+
+    return start, end
+
+def market_date_range(start: datetime | None, end: datetime | None) -> tuple[datetime, datetime]:
+    """Default to everything cached, since market data is fetched once from the CLI"""
+    if start is None or end is None:
+        cached = db.marketRange()
+        if cached is None:
+            raise HTTPException(status_code=404, detail="No market data cached, run: shoalhaven pushMarket")
+        start = start or cached[0]
+        end = end or cached[1]
+
+    if end <= start:
+        raise HTTPException(status_code=400, detail="Start date must be before end date")
 
     return start, end
 

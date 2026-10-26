@@ -205,6 +205,40 @@ def forecast(
 
 
 @app.command()
+def pushMarket(
+    start: Annotated[
+        str, typer.Option(help="First day to fetch, in NEM time (YYYY-MM-DD)")
+    ] = "2025-01-01",
+    end: Annotated[
+        str, typer.Option(help="Day after the last day to fetch (YYYY-MM-DD)")
+    ] = "2026-01-01",
+    series: Annotated[
+        Optional[list[str]], typer.Option(help="Only fetch these series (repeatable): price, demand, solar_rooftop, solar_utility, gullen_solar")
+    ] = None,
+):
+    """Fetches NSW market data from OpenElectricity and caches it in MongoDB
+
+    Needs OPENELECTRICITY_API_KEY in .env. Data is CC BY-NC 4.0, from openelectricity.org.au"""
+    from datetime import datetime
+
+    from shoalhaven_api import market
+
+    unknown = set(series or []) - set(market.SERIES_CONFIG)
+    if unknown:
+        raise typer.BadParameter(f"Unknown series: {', '.join(sorted(unknown))}")
+
+    with console.status("Fetching from OpenElectricity (one request per 15 days, per series)..."):
+        counts = market.push_market(datetime.fromisoformat(start), datetime.fromisoformat(end), series)
+
+    table = Table(title=f"Market data cached ({start} to {end})")
+    table.add_column("Series")
+    table.add_column("Half hours saved", justify="right")
+    for name, count in counts.items():
+        table.add_row(name, f"{count:,}")
+    console.print(table)
+
+
+@app.command()
 def generateFakeCsv(
     meter_count: Annotated[int, typer.Option(help="Number of fake meters to generate")] = 10,
     years: Annotated[float, typer.Option(help="Years of data to generate")] = 2.0,
