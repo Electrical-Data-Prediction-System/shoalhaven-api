@@ -70,8 +70,6 @@ def search_meters(location: str = Query(min_length=2, max_length=100)) -> list[M
         for meter in meters
     ]
 
-
-# Declared before /meters/{meter_id}, otherwise "map" would be read as a meter id
 @app.get("/meters/map", response_model=list[MeterMapPoint])
 def getMeterMap(
     start: datetime | None = None,
@@ -122,7 +120,9 @@ def getAllAggregatedMeterPower(
 ) -> list[dict[str, Any]]:
     
     validate_meter_ids(meterIds)
-    start, end = validate_date_range(start, end, 365)
+    if end is None:
+        end = latest_reading_end(meterIds)
+    start, end = validate_date_range(start, end, DEFAULT_RANGE_DAYS.get(interval, 365))
 
     return db.aggregateMeterPowerRows(meterIds, interval, start, end)
 
@@ -170,6 +170,8 @@ def getRawMeterPower(
 ) -> list[dict[str, Any]]:
 
     validate_meter_ids(meterIds)
+    if end is None:
+        end = latest_reading_end(meterIds)
     start, end = validate_date_range(start, end, 1)
 
     return db.aggregateMeterPowerRows(meterIds, startDate=start, endDate=end, raw=True)
@@ -241,6 +243,8 @@ def sumReadingsBetween(
     start: datetime | None = None, 
     end: datetime | None = None
 ) -> ChartResponse:
+    if end is None:
+        end = latest_reading_end()
     start, end = validate_date_range(start, end)
     
 
@@ -330,6 +334,15 @@ def market_date_range(start: datetime | None, end: datetime | None) -> tuple[dat
         raise HTTPException(status_code=400, detail="Start date must be before end date")
 
     return start, end
+
+def latest_reading_end(meter_ids: list[str] | None = None) -> datetime:
+    """Default end for charts: data is historical, so use the latest reading (now if there are none)"""
+    if meter_ids:
+        timestamps = [t for t in (db.readingLatestTimestamp(m) for m in meter_ids) if t is not None]
+        latest = max(timestamps, default=None)
+    else:
+        latest = db.readingLatestTimestamp()
+    return latest or datetime.now(UTC)
 
 def validate_meter_ids(meter_ids: str | list[str] | None = Query(default=None)):
     if meter_ids is not None and not meter_ids:
