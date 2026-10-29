@@ -266,6 +266,21 @@ def readingTotalsByTimestamp(start: datetime, end: datetime) -> list[dict[str, A
     ], allowDiskUse=True))
 
 
+def meterDailyTotals(meter_ids: list[str], start: datetime, end: datetime) -> list[dict[str, Any]]:
+    """
+    Total kWh per meter per local day: [{meterId, date: "2025-06-01", kwh}].
+    Readings are Sydney wall time stored as UTC, so grouping by UTC days gives true local days.
+    """
+    day = {"$dateToString": {"date": "$timestamp", "format": "%Y-%m-%d", "timezone": "UTC"}}
+
+    return list(readings.aggregate([
+        {"$match": {"_meterId": {"$in": meter_ids}, "timestamp": {"$gte": start, "$lt": end}}},
+        {"$group": {"_id": {"meterId": "$_meterId", "date": day}, "kwh": {"$sum": "$kwh"}}},
+        {"$sort": {"_id.date": 1}},
+        {"$project": {"_id": 0, "meterId": "$_id.meterId", "date": "$_id.date", "kwh": {"$round": ["$kwh", 2]}}},
+    ], allowDiskUse=True))
+
+
 def readingInsertMany(data: list[dict]) -> tuple[int, int]:
     try:
         res = readings.insert_many(data, ordered=False)

@@ -68,6 +68,14 @@ class MeterMapPoint(BaseModel):
     inShoalhaven: bool
 
 
+class DailyUsage(BaseModel):
+    """One meter's total kWh for one local day"""
+
+    meterId: str
+    date: str
+    kwh: float
+
+
 class MeterResponse(BaseModel):
     meterObject: Meter
 
